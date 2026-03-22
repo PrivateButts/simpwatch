@@ -12,7 +12,7 @@ Use this file as the default build/test/style contract unless a human request ov
 
 - `web/` Django project root (`manage.py`, app code, templates)
 - `web/config/` Django settings/urls/asgi/wsgi
-- `web/simpwatch/` core app (models, admin, views, scoring logic)
+- `web/simpwatch/` core app (models, admin, views, scoring logic, signals)
 - `services/common_setup.py` shared Django bootstrap for workers
 - `services/twitch_bot/` Twitch worker process
 - `services/discord_bot/` Discord worker process
@@ -22,8 +22,14 @@ Use this file as the default build/test/style contract unless a human request ov
 
 - Business rules for scoring belong in `web/simpwatch/scoring.py`.
 - Data schema belongs in `web/simpwatch/models.py` + migrations.
+  - `Person` / `Identity` — cross-platform identity graph.
+  - `SimpEvent` — immutable event log (simp and bamder event types).
+  - `ScoreAdjustment` — admin-applied manual point corrections.
+  - `ScoringConfig` — singleton row for cooldown/points configuration.
 - Presentation-only logic belongs in `web/simpwatch/views.py` and templates.
+- `signals.py` bumps the leaderboard cache version on any `SimpEvent` or `ScoreAdjustment` save/delete.
 - Workers should be thin adapters that call scoring functions.
+- `scoring.merge_people(target, sources)` collapses duplicate `Person` rows; use from admin only.
 
 ## Build / Run Commands
 
@@ -62,8 +68,7 @@ Run commands from repository root unless noted.
 
 ## Test Commands
 
-There is currently no committed test suite in this repository.
-When tests are added, use Django's test runner unless project instructions change.
+Tests live in `web/simpwatch/tests/` and use Django's test runner.
 
 - Run all tests:
   - `docker compose exec web python manage.py test`
@@ -94,9 +99,11 @@ If you add lint/type tools, document exact commands in this file.
 - Copy `.env.example` to `.env` for local runs.
 - Required runtime secrets include:
   - `DJANGO_SECRET_KEY`
-  - `TWITCH_OAUTH_TOKEN`
-  - `DISCORD_BOT_TOKEN`
+  - `TWITCH_OAUTH_TOKEN`, `TWITCH_BOT_USERNAME`, `TWITCH_CHANNELS` (comma-separated)
+  - `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`
 - Database is configured via `DATABASE_URL` or `POSTGRES_*` variables.
+- Cache requires Redis; configure via `CACHE_URL` (e.g. `redis://redis:6379/1`).
+  - `LEADERBOARD_CACHE_TTL_SECONDS` controls how long leaderboard responses are cached (default 15).
 - Scoring defaults come from env + `ScoringConfig` row:
   - `SIMP_DEFAULT_POINTS`
   - `SIMP_DEFAULT_COOLDOWN_SECONDS`
@@ -150,6 +157,7 @@ If you add lint/type tools, document exact commands in this file.
 - Validate query params and fall back to safe defaults.
 - Return stable JSON keys; avoid backwards-incompatible response shape changes.
 - Avoid expensive N+1 patterns; use `select_related`/`prefetch_related` where needed.
+- The leaderboard API (`GET /api/leaderboard?window=<24h|7d|30d|all>`) is cached; results are invalidated automatically via signals.
 
 ### Scoring and domain logic
 
@@ -190,10 +198,4 @@ If you add lint/type tools, document exact commands in this file.
 - After changes, run relevant checks/tests and report what was run.
 - If tooling is missing, state that explicitly in handoff.
 
-## Cursor/Copilot Rules Check
 
-- `.cursorrules`: not found
-- `.cursor/rules/`: not found
-- `.github/copilot-instructions.md`: not found
-
-No repository-specific Cursor/Copilot rule files are currently present.

@@ -168,6 +168,196 @@
       .grid {
         grid-template-columns: 1fr;
       }
+
+      .help-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .help-section {
+      margin-top: 16px;
+    }
+
+    .help-grid {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .help-grid h3 {
+      margin: 0 0 10px;
+      font-size: 0.96rem;
+      color: var(--accent);
+    }
+
+    .help-right {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .cmd-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    .cmd-table td {
+      padding: 5px 8px 5px 0;
+      vertical-align: top;
+      border-bottom: 1px dashed var(--event-rule);
+    }
+
+    .cmd-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .cmd {
+      font-family: "Courier New", Courier, monospace;
+      color: var(--accent);
+      padding-right: 12px !important;
+      width: 45%;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s ease;
+      position: relative;
+    }
+
+    .cmd:hover,
+    .cmd:focus {
+      color: #ff8a65;
+      outline: none;
+    }
+
+    .cmd::after {
+      content: "Click to copy";
+      margin-left: 8px;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      font-size: 0.72rem;
+      color: var(--muted);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .cmd:hover::after,
+    .cmd:focus::after {
+      opacity: 1;
+    }
+
+    .cmd.copied::after {
+      content: "Copied";
+      color: #35b56a;
+      opacity: 1;
+    }
+
+    .channel-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .channel-list li {
+      padding: 5px 0;
+      border-bottom: 1px dashed var(--event-rule);
+      font-size: 0.88rem;
+      display: block;
+    }
+
+    .channel-list li:last-child {
+      border-bottom: none;
+    }
+
+    .channel-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .channel-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--event-bg);
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+
+    .channel-card:hover {
+      border-color: var(--accent);
+    }
+
+    .channel-card.is-live {
+      border-color: #9146ff;
+    }
+
+    .channel-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .channel-avatar-placeholder {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    .channel-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .channel-name-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .live-badge {
+      display: inline-block;
+      background: #9146ff;
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 2px 5px;
+      border-radius: 4px;
+      line-height: 1.3;
+      flex-shrink: 0;
+    }
+
+    .channel-stats {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .channel-stream-title {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-style: italic;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.88rem;
     }
   </style>
 </head>
@@ -251,7 +441,169 @@
         </div>
       </article>
     </section>
+
+    <section class="help-section">
+      <article class="panel">
+        <h2>Help</h2>
+        <div class="help-grid">
+          {% if twitch_configured %}
+          <div>
+            <h3>Twitch Commands</h3>
+            <table class="cmd-table">
+              <tbody>
+                <tr>
+                  <td class="cmd">!simp</td>
+                  <td>Award a simp point to the channel broadcaster</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!simp @username</td>
+                  <td>Award a simp point to a specific user</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!simp reason &lt;text&gt;</td>
+                  <td>Award a simp point with a reason</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!bamder</td>
+                  <td>Log a bamder incident</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!bamder reason &lt;text&gt;</td>
+                  <td>Log a bamder incident with a reason</td>
+                </tr>
+                <tr>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simpcheck [user]</td>
+                  <td>Check rank and score for a user</td>
+                </tr>
+                <tr>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} standings [n]</td>
+                  <td>Show top N standings (default 3, max 10)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          <div class="help-right">
+            {% if discord_configured %}
+            <div>
+              <h3>Discord Commands</h3>
+              <table class="cmd-table">
+                <tbody>
+                  <tr>
+                    <td class="cmd">/simp target:&lt;user&gt;</td>
+                    <td>Register a simp callout for someone</td>
+                  </tr>
+                  <tr>
+                    <td class="cmd">/simp target:&lt;user&gt; reason:&lt;text&gt;</td>
+                    <td>Register a simp callout with a reason</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {% endif %}
+            {% if watched_channels %}
+            <div>
+              <h3>Watched Channels</h3>
+              <div class="channel-cards">
+                {% for channel in watched_channels %}
+                <a href="https://twitch.tv/{{ channel.login }}" target="_blank" rel="noopener noreferrer"
+                   class="channel-card{% if channel.is_live %} is-live{% endif %}">
+                  {% if channel.profile_image_url %}
+                  <img src="{{ channel.profile_image_url }}" alt="{{ channel.display_name }}" class="channel-avatar">
+                  {% else %}
+                  <div class="channel-avatar-placeholder"></div>
+                  {% endif %}
+                  <div class="channel-info">
+                    <div class="channel-name-row">
+                      <span>{{ channel.display_name }}</span>
+                      {% if channel.is_live %}<span class="live-badge">LIVE</span>{% endif %}
+                    </div>
+                    {% if channel.is_live %}
+                    <div class="channel-stats">
+                      {{ channel.viewer_count }} viewers{% if channel.game_name %} · {{ channel.game_name }}{% endif %}
+                    </div>
+                    {% if channel.stream_title %}
+                    <div class="channel-stream-title">{{ channel.stream_title }}</div>
+                    {% endif %}
+                    {% endif %}
+                  </div>
+                </a>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            {% if not twitch_configured and not discord_configured and not watched_channels %}
+            <p class="muted">No integrations configured.</p>
+            {% endif %}
+          </div>
+        </div>
+      </article>
+    </section>
   </main>
+  <script>
+  (function () {
+    const commandCells = document.querySelectorAll('.cmd');
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'absolute';
+      area.style.left = '-9999px';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    }
+
+    function cleanCommandText(text) {
+      return text.replace(/\s+/g, ' ').trim();
+    }
+
+    function flashCopied(el) {
+      el.classList.add('copied');
+      setTimeout(() => {
+        el.classList.remove('copied');
+      }, 1000);
+    }
+
+    async function handleCopy(el) {
+      const commandText = cleanCommandText(el.innerText || el.textContent || '');
+      if (!commandText) {
+        return;
+      }
+
+      try {
+        await copyText(commandText);
+        flashCopied(el);
+      } catch (err) {
+        console.error('Unable to copy command:', err);
+      }
+    }
+
+    commandCells.forEach((el) => {
+      el.setAttribute('tabindex', '0');
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', `Copy command ${cleanCommandText(el.innerText || el.textContent || '')}`);
+
+      el.addEventListener('click', () => {
+        handleCopy(el);
+      });
+
+      el.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleCopy(el);
+        }
+      });
+    });
+  })();
+  </script>
 </body>
 
 </html>

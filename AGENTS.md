@@ -69,6 +69,8 @@ When tests are added, use Django's test runner unless project instructions chang
   - `docker compose exec web python manage.py test`
 - Run tests for one module:
   - `docker compose exec web python manage.py test simpwatch.tests.test_scoring`
+  - `docker compose exec web python manage.py test simpwatch.tests.test_views`
+  - `docker compose exec web python manage.py test simpwatch.tests.test_command_parsing`
 - Run a single test case:
   - `docker compose exec web python manage.py test simpwatch.tests.test_scoring.ScoringTests`
 - Run a single test method:

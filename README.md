@@ -12,6 +12,14 @@ SimpWatch tracks `!simp` callouts from Twitch and `/simp` calls from Discord, th
   - `!simp @username` -> credits exact username
   - optional reason: `!simp @username reason <text>`, `!simp reason <text>`,
     `!simp @username because <text>`, or `!simp because <text>`
+
+Examples:
+- `!simp`
+- `!simp @riikarii`
+- `!simp reason gifted 10 subs`
+- `!simp @riikarii reason gifted 10 subs`
+- `!simp because sent another dono`
+- `!simp @riikarii because sent another dono`
 - Discord slash-only command:
   - `/simp target:<user> reason:<optional text>`
 - Django admin for identity linking and score moderation

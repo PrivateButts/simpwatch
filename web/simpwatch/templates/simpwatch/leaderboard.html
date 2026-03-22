@@ -185,7 +185,7 @@
 
     <section class="grid">
       <article class="panel">
-        <h2>Leaderboard ({{ window }})</h2>
+        <h2>Thirsty Bitches (respectfully) ({{ window }})</h2>
         {% if rows %}
         <ol>
           {% for row in rows %}
@@ -221,8 +221,7 @@
         <div class="event-list">
           {% for event in recent_events %}
           <div class="event">
-            <div><strong>{{ event.actor_identity.username }}</strong> called <strong>{{ event.target_person.name
-                }}</strong> out for simping (+{{ event.points }})</div>
+            <div><strong>{{ event.actor_identity.username }}</strong> called <strong>{{ event.target_person.name }}</strong> out for simping (+{{ event.points }})</div>
             {% if event.reason %}
             <div class="reason">Reason: {{ event.reason }}</div>
             {% endif %}

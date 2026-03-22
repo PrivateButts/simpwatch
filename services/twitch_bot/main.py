@@ -11,34 +11,8 @@ from services.common_setup import setup_django
 setup_django()
 
 from simpwatch.models import Identity  # noqa: E402
+from simpwatch.command_parsing import parse_twitch_reason, parse_twitch_target  # noqa: E402
 from simpwatch.scoring import IdentityInput, get_or_create_twitch_target, register_simp  # noqa: E402
-
-
-def _parse_target(content: str) -> str | None:
-    parts = content.strip().split()
-    if len(parts) < 2:
-        return None
-    candidate = parts[1]
-    if not candidate.startswith("@"):
-        return None
-    username = candidate.lstrip("@").strip().lower()
-    return username or None
-
-
-def _parse_reason(content: str) -> str:
-    parts = content.strip().split()
-    if len(parts) < 3:
-        return ""
-    start_index = 1
-    if parts[1].startswith("@"):
-        start_index = 2
-    if len(parts) <= start_index:
-        return ""
-    if parts[start_index].lower() not in {"reason", "because"}:
-        return ""
-    if len(parts) <= start_index + 1:
-        return ""
-    return " ".join(parts[start_index + 1 :]).strip()
 
 
 class TwitchSimpBot(commands.Bot):
@@ -72,7 +46,7 @@ class TwitchSimpBot(commands.Bot):
             display_name=message.author.display_name or message.author.name,
         )
 
-        target_username = _parse_target(content)
+        target_username = parse_twitch_target(content)
         if target_username:
             target_person = await sync_to_async(get_or_create_twitch_target)(
                 target_username
@@ -83,7 +57,7 @@ class TwitchSimpBot(commands.Bot):
                 broadcaster
             )
 
-        reason = _parse_reason(content)
+        reason = parse_twitch_reason(content)
 
         event = await sync_to_async(register_simp)(
             actor=actor_input,

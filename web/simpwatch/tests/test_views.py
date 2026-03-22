@@ -113,7 +113,13 @@ class LeaderboardViewTests(TestCase):
 
 
 class HelpSectionViewTests(TestCase):
+    @override_settings(
+        TWITCH_CHANNELS=["streamer1"],
+        TWITCH_BOT_USERNAME="simpbot",
+        DISCORD_BOT_TOKEN="discord-token",
+    )
     def test_help_section_rendered_on_page(self):
+        cache.clear()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
@@ -122,7 +128,13 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("Discord Commands", content)
         self.assertIn("Watched Channels", content)
 
+    @override_settings(
+        TWITCH_CHANNELS=["streamer1"],
+        TWITCH_BOT_USERNAME="simpbot",
+        DISCORD_BOT_TOKEN="discord-token",
+    )
     def test_commands_listed_on_page(self):
+        cache.clear()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
@@ -138,13 +150,13 @@ class HelpSectionViewTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn("twitch.tv/streamer1", content)
-        self.assertIn("twitch.tv/streamer2", content)
+        self.assertIn("https://twitch.tv/streamer1", content)
+        self.assertIn("https://twitch.tv/streamer2", content)
 
-    @override_settings(TWITCH_CHANNELS=[])
+    @override_settings(TWITCH_CHANNELS=[], TWITCH_BOT_USERNAME="", DISCORD_BOT_TOKEN="")
     def test_no_channels_shows_fallback_message(self):
         cache.clear()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn("No channels configured.", content)
+        self.assertIn("No integrations configured.", content)

@@ -1,6 +1,7 @@
 from datetime import timedelta
 
-from django.test import TestCase
+from django.core.cache import cache
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from simpwatch.models import Identity, Person, SimpEvent
@@ -109,3 +110,41 @@ class LeaderboardViewTests(TestCase):
 
         self.assertEqual(payload["leaderboard"], [])
         self.assertEqual(payload["narc_leaderboard"], [])
+
+
+class HelpSectionViewTests(TestCase):
+    def test_help_section_rendered_on_page(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Help", content)
+        self.assertIn("Twitch Commands", content)
+        self.assertIn("Discord Commands", content)
+        self.assertIn("Watched Channels", content)
+
+    def test_commands_listed_on_page(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("!simp", content)
+        self.assertIn("!bamder", content)
+        self.assertIn("/simp", content)
+        self.assertIn("simpcheck", content)
+        self.assertIn("standings", content)
+
+    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
+    def test_watched_channels_shown_when_configured(self):
+        cache.clear()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("twitch.tv/streamer1", content)
+        self.assertIn("twitch.tv/streamer2", content)
+
+    @override_settings(TWITCH_CHANNELS=[])
+    def test_no_channels_shows_fallback_message(self):
+        cache.clear()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("No channels configured.", content)

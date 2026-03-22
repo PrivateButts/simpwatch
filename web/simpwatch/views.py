@@ -134,6 +134,10 @@ def _bamder_recent_events(window: str):
     return qs[:25]
 
 
+def _watched_channels() -> list[str]:
+    return list(getattr(settings, "TWITCH_CHANNELS", []))
+
+
 def leaderboard_page(request):
     window = request.GET.get("window", "all")
     if window not in WINDOWS:
@@ -149,6 +153,7 @@ def leaderboard_page(request):
             "bamder_total": _bamder_total(window),
             "bamder_recent_events": _bamder_recent_events(window),
             "recent_events": _recent_events(window),
+            "watched_channels": _watched_channels(),
         }
         cache.set(key, context, _cache_ttl())
     return render(request, "simpwatch/leaderboard.html", context)

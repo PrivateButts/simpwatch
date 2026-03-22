@@ -168,6 +168,77 @@
       .grid {
         grid-template-columns: 1fr;
       }
+
+      .help-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .help-section {
+      margin-top: 16px;
+    }
+
+    .help-grid {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .help-grid h3 {
+      margin: 0 0 10px;
+      font-size: 0.96rem;
+      color: var(--accent);
+    }
+
+    .help-right {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .cmd-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    .cmd-table td {
+      padding: 5px 8px 5px 0;
+      vertical-align: top;
+      border-bottom: 1px dashed var(--event-rule);
+    }
+
+    .cmd-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .cmd {
+      font-family: "Courier New", Courier, monospace;
+      color: var(--accent);
+      padding-right: 12px !important;
+      width: 45%;
+    }
+
+    .channel-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .channel-list li {
+      padding: 5px 0;
+      border-bottom: 1px dashed var(--event-rule);
+      font-size: 0.88rem;
+      display: block;
+    }
+
+    .channel-list li:last-child {
+      border-bottom: none;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.88rem;
     }
   </style>
 </head>
@@ -248,6 +319,78 @@
           {% empty %}
           <p>No recent events.</p>
           {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="help-section">
+      <article class="panel">
+        <h2>Help</h2>
+        <div class="help-grid">
+          <div>
+            <h3>Twitch Commands</h3>
+            <table class="cmd-table">
+              <tbody>
+                <tr>
+                  <td class="cmd">!simp</td>
+                  <td>Award a simp point to the channel broadcaster</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!simp @username</td>
+                  <td>Award a simp point to a specific user</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!simp reason &lt;text&gt;</td>
+                  <td>Award a simp point with a reason</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!bamder</td>
+                  <td>Log a bamder incident</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!bamder reason &lt;text&gt;</td>
+                  <td>Log a bamder incident with a reason</td>
+                </tr>
+                <tr>
+                  <td class="cmd">@bot simpcheck [user]</td>
+                  <td>Check rank and score for a user</td>
+                </tr>
+                <tr>
+                  <td class="cmd">@bot standings [n]</td>
+                  <td>Show top N standings (default 3, max 10)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="help-right">
+            <div>
+              <h3>Discord Commands</h3>
+              <table class="cmd-table">
+                <tbody>
+                  <tr>
+                    <td class="cmd">/simp target:&lt;user&gt;</td>
+                    <td>Register a simp callout for someone</td>
+                  </tr>
+                  <tr>
+                    <td class="cmd">/simp target:&lt;user&gt; reason:&lt;text&gt;</td>
+                    <td>Register a simp callout with a reason</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3>Watched Channels</h3>
+              {% if watched_channels %}
+              <ul class="channel-list">
+                {% for channel in watched_channels %}
+                <li>twitch.tv/{{ channel }}</li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <p class="muted">No channels configured.</p>
+              {% endif %}
+            </div>
+          </div>
         </div>
       </article>
     </section>

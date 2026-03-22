@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.db.models import Count
 from django.db.models import Sum
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -69,6 +70,34 @@ def _recent_events(window: str):
     return qs[:50]
 
 
+def _narc_rows(window: str):
+    since = _get_since(window)
+    event_qs = SimpEvent.objects.select_related("actor_identity__person")
+    if since is not None:
+        event_qs = event_qs.filter(created_at__gte=since)
+
+    counts = (
+        event_qs.values("actor_identity__person")
+        .annotate(callout_count=Count("id"))
+        .order_by("-callout_count")
+    )
+    person_ids = [row["actor_identity__person"] for row in counts]
+    people = {person.id: person for person in Person.objects.filter(id__in=person_ids)}
+
+    rows = []
+    for row in counts:
+        person = people.get(row["actor_identity__person"])
+        if not person:
+            continue
+        rows.append(
+            {
+                "person": person,
+                "callout_count": row["callout_count"],
+            }
+        )
+    return rows
+
+
 def leaderboard_page(request):
     window = request.GET.get("window", "all")
     if window not in WINDOWS:
@@ -77,6 +106,7 @@ def leaderboard_page(request):
         "window": window,
         "windows": WINDOWS.keys(),
         "rows": _leaderboard_rows(window),
+        "narc_rows": _narc_rows(window),
         "recent_events": _recent_events(window),
     }
     return render(request, "simpwatch/leaderboard.html", context)
@@ -87,6 +117,7 @@ def leaderboard_api(request):
     if window not in WINDOWS:
         window = "all"
     rows = _leaderboard_rows(window)
+    narc_rows = _narc_rows(window)
     events = _recent_events(window)
     return JsonResponse(
         {
@@ -99,6 +130,14 @@ def leaderboard_api(request):
                 }
                 for row in rows
             ],
+            "narc_leaderboard": [
+                {
+                    "person_id": row["person"].id,
+                    "name": row["person"].name,
+                    "callout_count": row["callout_count"],
+                }
+                for row in narc_rows
+            ],
             "recent_events": [
                 {
                     "id": event.id,
@@ -106,6 +145,7 @@ def leaderboard_api(request):
                     "actor": event.actor_identity.username,
                     "target": event.target_person.name,
                     "points": event.points,
+                    "reason": event.reason,
                     "source": event.source,
                     "created_at": event.created_at.isoformat(),
                 }

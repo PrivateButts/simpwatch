@@ -6,11 +6,23 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _csv_env(name: str, default: str = "") -> list[str]:
+    raw = os.getenv(name, default)
+    return [value.strip() for value in raw.split(",") if value.strip()]
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
-ALLOWED_HOSTS = [
-    h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if h.strip()
-]
+ALLOWED_HOSTS = _csv_env("DJANGO_ALLOWED_HOSTS", "*")
+CSRF_TRUSTED_ORIGINS = _csv_env("DJANGO_CSRF_TRUSTED_ORIGINS", "")
+
+if os.getenv("DJANGO_TRUST_X_FORWARDED_PROTO", "False").lower() == "true":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+USE_X_FORWARDED_HOST = (
+    os.getenv("DJANGO_USE_X_FORWARDED_HOST", "False").lower() == "true"
+)
 
 INSTALLED_APPS = [
     "django.contrib.admin",

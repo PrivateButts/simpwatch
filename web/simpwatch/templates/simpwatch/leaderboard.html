@@ -14,6 +14,30 @@
       --accent: #c4492d;
       --accent-soft: #f6dfd8;
       --border: #d7d8cf;
+      --event-bg: #fffdf9;
+      --event-border: #ecece4;
+      --event-rule: #ecece4;
+      --shadow: rgba(0, 0, 0, 0.04);
+      --bg-radial-1: #fff8ef;
+      --bg-radial-2: #fbe6dc;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #11161b;
+        --panel: #1b232b;
+        --text: #e8edf1;
+        --muted: #99a7b2;
+        --accent: #ff8a65;
+        --accent-soft: #3a2a24;
+        --border: #2f3a44;
+        --event-bg: #172027;
+        --event-border: #2a3641;
+        --event-rule: #2a3641;
+        --shadow: rgba(0, 0, 0, 0.28);
+        --bg-radial-1: #1f2830;
+        --bg-radial-2: #2b1f1a;
+      }
     }
 
     * {
@@ -25,8 +49,8 @@
       font-family: "Trebuchet MS", "Segoe UI", sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 15% 10%, #fff8ef 0, transparent 45%),
-        radial-gradient(circle at 90% 0%, #fbe6dc 0, transparent 30%),
+        radial-gradient(circle at 15% 10%, var(--bg-radial-1) 0, transparent 45%),
+        radial-gradient(circle at 90% 0%, var(--bg-radial-2) 0, transparent 30%),
         var(--bg);
       min-height: 100vh;
     }
@@ -84,7 +108,7 @@
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 14px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+      box-shadow: 0 8px 24px var(--shadow);
     }
 
     .panel h2 {
@@ -102,7 +126,7 @@
       display: flex;
       justify-content: space-between;
       gap: 10px;
-      border-bottom: 1px dashed #ecece4;
+      border-bottom: 1px dashed var(--event-rule);
     }
 
     li:last-child {
@@ -120,11 +144,18 @@
     }
 
     .event {
-      border: 1px solid #ecece4;
+      border: 1px solid var(--event-border);
       border-radius: 10px;
       padding: 10px;
       font-size: 0.92rem;
-      background: #fffdf9;
+      background: var(--event-bg);
+    }
+
+    .reason {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-style: italic;
     }
 
     .meta {
@@ -170,12 +201,31 @@
       </article>
 
       <article class="panel">
+        <h2>Narcs ({{ window }})</h2>
+        {% if narc_rows %}
+        <ol>
+          {% for row in narc_rows %}
+          <li>
+            <span>{{ row.person.name }}</span>
+            <span class="points">{{ row.callout_count }} calls</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p>No narc activity yet for this window.</p>
+        {% endif %}
+      </article>
+
+      <article class="panel">
         <h2>Recent Calls</h2>
         <div class="event-list">
           {% for event in recent_events %}
           <div class="event">
             <div><strong>{{ event.actor_identity.username }}</strong> called <strong>{{ event.target_person.name
                 }}</strong> out for simping (+{{ event.points }})</div>
+            {% if event.reason %}
+            <div class="reason">Reason: {{ event.reason }}</div>
+            {% endif %}
             <div class="meta">{{ event.platform }} · {{ event.source }} · {{ event.created_at }}</div>
           </div>
           {% empty %}

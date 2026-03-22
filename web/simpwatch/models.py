@@ -51,6 +51,7 @@ class SimpEvent(models.Model):
     source = models.CharField(max_length=255)
     points = models.IntegerField(default=1)
     raw_content = models.TextField(blank=True)
+    reason = models.TextField(blank=True)
     message_id = models.CharField(max_length=255, blank=True)
     dedupe_key = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

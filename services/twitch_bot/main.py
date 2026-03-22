@@ -25,6 +25,22 @@ def _parse_target(content: str) -> str | None:
     return username or None
 
 
+def _parse_reason(content: str) -> str:
+    parts = content.strip().split()
+    if len(parts) < 3:
+        return ""
+    start_index = 1
+    if parts[1].startswith("@"):
+        start_index = 2
+    if len(parts) <= start_index:
+        return ""
+    if parts[start_index].lower() not in {"reason", "because"}:
+        return ""
+    if len(parts) <= start_index + 1:
+        return ""
+    return " ".join(parts[start_index + 1 :]).strip()
+
+
 class TwitchSimpBot(commands.Bot):
     def __init__(self) -> None:
         channels = [
@@ -67,11 +83,14 @@ class TwitchSimpBot(commands.Bot):
                 broadcaster
             )
 
+        reason = _parse_reason(content)
+
         event = await sync_to_async(register_simp)(
             actor=actor_input,
             target=target_person,
             platform=Identity.Platform.TWITCH,
             source=message.channel.name,
+            reason=reason,
             raw_content=content,
             message_id=str(message.id),
             dedupe_key=f"twitch:{message.id}",

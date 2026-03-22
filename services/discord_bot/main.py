@@ -39,7 +39,12 @@ bot = DiscordSimpBot()
 
 @bot.tree.command(name="simp", description="Register a simp callout for someone")
 @app_commands.describe(target="Who should receive the simp point")
-async def simp(interaction: discord.Interaction, target: discord.Member):
+@app_commands.describe(reason="Optional reason for the simp callout")
+async def simp(
+    interaction: discord.Interaction,
+    target: discord.Member,
+    reason: str | None = None,
+):
     actor_user = interaction.user
 
     actor_input = IdentityInput(
@@ -63,6 +68,7 @@ async def simp(interaction: discord.Interaction, target: discord.Member):
         target=target_identity.person,
         platform=Identity.Platform.DISCORD,
         source=str(interaction.guild_id or "dm"),
+        reason=reason or "",
         raw_content=f"/simp target:{target.name}",
         message_id=str(interaction.id),
         dedupe_key=f"discord:{interaction.id}",

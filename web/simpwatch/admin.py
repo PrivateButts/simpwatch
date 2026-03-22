@@ -54,6 +54,7 @@ class SimpEventAdmin(admin.ModelAdmin):
         "actor_identity",
         "target_person",
         "points",
+        "reason",
         "source",
         "created_at",
     )
@@ -63,6 +64,7 @@ class SimpEventAdmin(admin.ModelAdmin):
         "target_person__name",
         "source",
         "message_id",
+        "reason",
     )
     autocomplete_fields = ("actor_identity", "target_person")
 

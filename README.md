@@ -5,11 +5,15 @@ SimpWatch tracks `!simp` callouts from Twitch and `/simp` calls from Discord, th
 ## Features
 
 - Public leaderboard page with windows: `24h`, `7d`, `30d`, `all`
+- Auto dark mode using system preference (`prefers-color-scheme`)
+- Narc leaderboard (callout count by caller)
 - Twitch command parsing:
   - `!simp` -> credits channel broadcaster
   - `!simp @username` -> credits exact username
+  - optional reason: `!simp @username reason <text>`, `!simp reason <text>`,
+    `!simp @username because <text>`, or `!simp because <text>`
 - Discord slash-only command:
-  - `/simp target:<user>`
+  - `/simp target:<user> reason:<optional text>`
 - Django admin for identity linking and score moderation
 - Django admin bulk merge action for combining duplicate people records
 - Configurable cooldown lever (default disabled)
@@ -30,6 +34,11 @@ cp .env.example .env
 - `TWITCH_CHANNELS` (comma-separated channel names)
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_GUILD_ID` (optional; if set, slash command syncs to one guild)
+
+For reverse proxy / HTTPS deployments (important for admin login CSRF):
+- `DJANGO_CSRF_TRUSTED_ORIGINS` (comma-separated origins, e.g. `https://simp.example.com`)
+- `DJANGO_TRUST_X_FORWARDED_PROTO=True` (if TLS terminates at proxy)
+- `DJANGO_USE_X_FORWARDED_HOST=True` (if host header comes from proxy)
 
 3. Start services:
 
@@ -52,6 +61,9 @@ docker compose exec web python manage.py createsuperuser
 
 - `SIMP_DEFAULT_POINTS`: default `1`
 - `SIMP_DEFAULT_COOLDOWN_SECONDS`: default `0` (disabled)
+- `DJANGO_CSRF_TRUSTED_ORIGINS`: empty by default
+- `DJANGO_TRUST_X_FORWARDED_PROTO`: `False` by default
+- `DJANGO_USE_X_FORWARDED_HOST`: `False` by default
 
 Set cooldown later in admin via `ScoringConfig` without code changes.
 

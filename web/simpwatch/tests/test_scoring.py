@@ -3,7 +3,13 @@ from django.test import TestCase
 from typing import cast
 
 from simpwatch.models import Identity, Person, ScoreAdjustment, SimpEvent
-from simpwatch.scoring import IdentityInput, merge_people, register_simp
+from simpwatch.scoring import (
+    IdentityInput,
+    get_leaderboard_entries,
+    get_person_score_and_rank,
+    merge_people,
+    register_simp,
+)
 
 
 class ScoringTests(TestCase):
@@ -103,3 +109,91 @@ class ScoringTests(TestCase):
         event = cast(SimpEvent, event)
         self.assertEqual(event.event_type, SimpEvent.EventType.BAMDER)
         self.assertEqual(event.reason, "was chaotic")
+
+
+class LeaderboardQueryTests(TestCase):
+    """Tests for get_leaderboard_entries and get_person_score_and_rank."""
+
+    def _actor(self, uid: str = "actor-1", username: str = "caller") -> IdentityInput:
+        return IdentityInput(
+            platform=str(Identity.Platform.TWITCH),
+            platform_user_id=uid,
+            username=username,
+            display_name=username,
+        )
+
+    def _simp(self, actor: IdentityInput, target: Person, uid: str) -> None:
+        register_simp(
+            actor=actor,
+            target=target,
+            platform=str(Identity.Platform.TWITCH),
+            source="chan",
+            message_id=uid,
+            dedupe_key=f"twitch:{uid}",
+        )
+
+    def test_get_leaderboard_entries_sorted_descending(self):
+        p1 = Person.objects.create(name="p1")
+        p2 = Person.objects.create(name="p2")
+        self._simp(self._actor("a1", "c1"), p1, "m1")
+        self._simp(self._actor("a2", "c2"), p2, "m2")
+        self._simp(self._actor("a3", "c3"), p2, "m3")
+
+        entries = get_leaderboard_entries()
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["person"].id, p2.id)
+        self.assertEqual(entries[0]["points"], 2)
+        self.assertEqual(entries[1]["person"].id, p1.id)
+        self.assertEqual(entries[1]["points"], 1)
+
+    def test_get_leaderboard_entries_empty(self):
+        self.assertEqual(get_leaderboard_entries(), [])
+
+    def test_get_person_score_and_rank_found(self):
+        p1 = Person.objects.create(name="top")
+        Identity.objects.create(
+            person=p1,
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="top-1",
+            username="top",
+            display_name="top",
+        )
+        p2 = Person.objects.create(name="second")
+        Identity.objects.create(
+            person=p2,
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="second-1",
+            username="second",
+            display_name="second",
+        )
+        self._simp(self._actor("a1", "c1"), p1, "m1")
+        self._simp(self._actor("a2", "c2"), p1, "m2")
+        self._simp(self._actor("a3", "c3"), p2, "m3")
+
+        score, rank = get_person_score_and_rank("top")
+        self.assertEqual(score, 2)
+        self.assertEqual(rank, 1)
+
+        score, rank = get_person_score_and_rank("second")
+        self.assertEqual(score, 1)
+        self.assertEqual(rank, 2)
+
+    def test_get_person_score_and_rank_not_found(self):
+        score, rank = get_person_score_and_rank("nobody")
+        self.assertEqual(score, 0)
+        self.assertIsNone(rank)
+
+    def test_get_person_score_and_rank_case_insensitive(self):
+        p = Person.objects.create(name="TopUser")
+        Identity.objects.create(
+            person=p,
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="top-1",
+            username="topuser",
+            display_name="TopUser",
+        )
+        self._simp(self._actor(), p, "m1")
+
+        score, rank = get_person_score_and_rank("TopUser")
+        self.assertEqual(score, 1)
+        self.assertEqual(rank, 1)

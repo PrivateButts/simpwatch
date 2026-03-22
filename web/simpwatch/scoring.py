@@ -251,6 +251,21 @@ def get_person_score_and_rank(
     return 0, None
 
 
+def get_score_and_rank_for_person(
+    person: Person, window: str = "all"
+) -> tuple[int, int | None]:
+    """Return ``(score, rank)`` for a Person object.
+
+    Rank is 1-based and derived from the sorted leaderboard.  Returns
+    ``(0, None)`` when the person has no recorded score for the given window.
+    """
+    entries = get_leaderboard_entries(window)
+    for rank, row in enumerate(entries, start=1):
+        if row["person"].id == person.id:
+            return row["points"], rank
+    return 0, None
+
+
 def person_total_score(person: Person, since=None) -> int:
     events = SimpEvent.objects.filter(target_person=person)
     adjustments = ScoreAdjustment.objects.filter(target_person=person)

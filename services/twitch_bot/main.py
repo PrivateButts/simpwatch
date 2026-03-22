@@ -23,6 +23,7 @@ from simpwatch.scoring import (  # noqa: E402
     get_or_create_named_person,
     get_or_create_twitch_target,
     get_person_score_and_rank,
+    get_score_and_rank_for_person,
     normalize_username,
     register_simp,
 )
@@ -35,6 +36,11 @@ class TwitchSimpBot(commands.Bot):
             for c in os.getenv("TWITCH_CHANNELS", "").split(",")
             if c.strip()
         ]
+        self._reply_channels: set[str] = {
+            c.strip().lower()
+            for c in os.getenv("TWITCH_REPLY_CHANNELS", "").split(",")
+            if c.strip()
+        }
         super().__init__(
             token=os.getenv("TWITCH_OAUTH_TOKEN", ""),
             prefix="!",
@@ -100,6 +106,18 @@ class TwitchSimpBot(commands.Bot):
             print(
                 f"event registered twitch type={event_type} actor={actor_input.username} target={target_person.name} id={event.id}"
             )
+            if message.channel.name in self._reply_channels:
+                score, rank = await sync_to_async(get_score_and_rank_for_person)(
+                    target_person
+                )
+                if rank is not None:
+                    await message.channel.send(
+                        f"{target_person.name} is ranked #{rank} with {score} point(s)."
+                    )
+                else:
+                    await message.channel.send(
+                        f"{target_person.name} has been registered!"
+                    )
 
     async def _handle_bot_command(self, message, command: str, args: list[str]) -> None:
         channel = message.channel

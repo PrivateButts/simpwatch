@@ -251,6 +251,38 @@ def get_person_score_and_rank(
     return 0, None
 
 
+def get_score_and_rank_for_person(
+    person: Person, window: str = "all"
+) -> tuple[int, int | None]:
+    """Return ``(score, rank)`` for a Person object.
+
+    Rank is 1-based and derived from the sorted leaderboard.  Returns
+    ``(0, None)`` when the person has no recorded score for the given window.
+    """
+    entries = get_leaderboard_entries(window)
+    for rank, row in enumerate(entries, start=1):
+        if row["person"].id == person.id:
+            return row["points"], rank
+    return 0, None
+
+
+def get_bamder_counts(person: Person) -> tuple[int, int, int]:
+    """Return ``(today, this_week, total)`` counts of bamder events for *person*.
+
+    ``today`` covers the last 24 hours, ``this_week`` covers the last 7 days,
+    and ``total`` covers all time.
+    """
+    now = timezone.now()
+    qs = SimpEvent.objects.filter(
+        target_person=person,
+        event_type=SimpEvent.EventType.BAMDER,
+    )
+    total = qs.count()
+    this_week = qs.filter(created_at__gte=now - timedelta(days=7)).count()
+    today = qs.filter(created_at__gte=now - timedelta(hours=24)).count()
+    return today, this_week, total
+
+
 def person_total_score(person: Person, since=None) -> int:
     events = SimpEvent.objects.filter(target_person=person)
     adjustments = ScoreAdjustment.objects.filter(target_person=person)

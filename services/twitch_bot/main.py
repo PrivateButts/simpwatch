@@ -19,6 +19,7 @@ from simpwatch.command_parsing import (  # noqa: E402
 )
 from simpwatch.scoring import (  # noqa: E402
     IdentityInput,
+    get_bamder_counts,
     get_leaderboard_entries,
     get_or_create_named_person,
     get_or_create_twitch_target,
@@ -27,6 +28,15 @@ from simpwatch.scoring import (  # noqa: E402
     normalize_username,
     register_simp,
 )
+
+
+def _ordinal(n: int) -> str:
+    """Return the ordinal string for a positive integer (e.g. 1 -> '1st')."""
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 class TwitchSimpBot(commands.Bot):
@@ -107,17 +117,29 @@ class TwitchSimpBot(commands.Bot):
                 f"event registered twitch type={event_type} actor={actor_input.username} target={target_person.name} id={event.id}"
             )
             if message.channel.name in self._reply_channels:
-                score, rank = await sync_to_async(get_score_and_rank_for_person)(
-                    target_person
-                )
-                if rank is not None:
+                if event_type == str(SimpEvent.EventType.BAMDER):
+                    today, this_week, total = await sync_to_async(get_bamder_counts)(
+                        target_person
+                    )
                     await message.channel.send(
-                        f"{target_person.name} is ranked #{rank} with {score} point(s)."
+                        f"Pamder has acted out AGAIN! "
+                        f"This is the {_ordinal(today)} time today, "
+                        f"{_ordinal(this_week)} time this week, "
+                        f"{_ordinal(total)} time total. "
+                        f"Someone oughta do something about that..."
                     )
                 else:
-                    await message.channel.send(
-                        f"{target_person.name} has been registered!"
+                    score, rank = await sync_to_async(get_score_and_rank_for_person)(
+                        target_person
                     )
+                    if rank is not None:
+                        await message.channel.send(
+                            f"{target_person.name} is ranked #{rank} with {score} point(s)."
+                        )
+                    else:
+                        await message.channel.send(
+                            f"{target_person.name} has been registered!"
+                        )
 
     async def _handle_bot_command(self, message, command: str, args: list[str]) -> None:
         channel = message.channel

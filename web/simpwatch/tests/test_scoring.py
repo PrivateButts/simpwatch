@@ -5,6 +5,7 @@ from typing import cast
 from simpwatch.models import Identity, Person, ScoreAdjustment, SimpEvent
 from simpwatch.scoring import (
     IdentityInput,
+    get_bamder_counts,
     get_leaderboard_entries,
     get_person_score_and_rank,
     merge_people,
@@ -197,3 +198,76 @@ class LeaderboardQueryTests(TestCase):
         score, rank = get_person_score_and_rank("TopUser")
         self.assertEqual(score, 1)
         self.assertEqual(rank, 1)
+
+
+class BamderCountsTests(TestCase):
+    """Tests for get_bamder_counts."""
+
+    def _actor(self, uid: str, username: str) -> IdentityInput:
+        return IdentityInput(
+            platform=str(Identity.Platform.TWITCH),
+            platform_user_id=uid,
+            username=username,
+            display_name=username,
+        )
+
+    def _bamder(self, actor: IdentityInput, target: Person, uid: str) -> None:
+        register_simp(
+            actor=actor,
+            target=target,
+            platform=str(Identity.Platform.TWITCH),
+            event_type=str(SimpEvent.EventType.BAMDER),
+            source="chan",
+            message_id=uid,
+            dedupe_key=f"twitch:{uid}",
+        )
+
+    def test_counts_start_at_zero(self):
+        pamder = Person.objects.create(name="pamder")
+        today, this_week, total = get_bamder_counts(pamder)
+        self.assertEqual(today, 0)
+        self.assertEqual(this_week, 0)
+        self.assertEqual(total, 0)
+
+    def test_counts_after_single_bamder(self):
+        pamder = Person.objects.create(name="pamder")
+        self._bamder(self._actor("a1", "user1"), pamder, "m1")
+        today, this_week, total = get_bamder_counts(pamder)
+        self.assertEqual(today, 1)
+        self.assertEqual(this_week, 1)
+        self.assertEqual(total, 1)
+
+    def test_counts_multiple_bamders(self):
+        pamder = Person.objects.create(name="pamder")
+        self._bamder(self._actor("a1", "user1"), pamder, "m1")
+        self._bamder(self._actor("a2", "user2"), pamder, "m2")
+        self._bamder(self._actor("a3", "user3"), pamder, "m3")
+        today, this_week, total = get_bamder_counts(pamder)
+        self.assertEqual(today, 3)
+        self.assertEqual(this_week, 3)
+        self.assertEqual(total, 3)
+
+    def test_simp_events_not_counted(self):
+        pamder = Person.objects.create(name="pamder")
+        # Register a simp event (not bamder) — should not affect counts
+        register_simp(
+            actor=self._actor("a1", "user1"),
+            target=pamder,
+            platform=str(Identity.Platform.TWITCH),
+            event_type=str(SimpEvent.EventType.SIMP),
+            source="chan",
+            message_id="ms1",
+            dedupe_key="twitch:ms1",
+        )
+        today, this_week, total = get_bamder_counts(pamder)
+        self.assertEqual(today, 0)
+        self.assertEqual(this_week, 0)
+        self.assertEqual(total, 0)
+
+    def test_counts_isolated_per_person(self):
+        pamder = Person.objects.create(name="pamder")
+        other = Person.objects.create(name="other")
+        self._bamder(self._actor("a1", "user1"), pamder, "m1")
+        self._bamder(self._actor("a2", "user2"), other, "m2")
+        today, this_week, total = get_bamder_counts(pamder)
+        self.assertEqual(total, 1)

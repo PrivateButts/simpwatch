@@ -4,3 +4,4 @@ __pycache__/
 .ruff_cache/
 web/staticfiles/
 postgres_data/
+scratch.ipynb

@@ -244,6 +244,10 @@ def _watched_channels_enriched() -> list[dict]:
     return result
 
 
+def healthcheck(request):
+    return JsonResponse({"status": "ok"})
+
+
 def leaderboard_page(request):
     window = request.GET.get("window", "all")
     if window not in WINDOWS:

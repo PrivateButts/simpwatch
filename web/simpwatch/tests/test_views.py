@@ -160,3 +160,11 @@ class HelpSectionViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn("No integrations configured.", content)
+
+
+class HealthcheckViewTests(TestCase):
+    def test_healthcheck_returns_ok_payload(self):
+        response = self.client.get("/healthz")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})

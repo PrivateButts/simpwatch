@@ -152,3 +152,56 @@ Published image naming:
 Default tags include branch/tag/sha, plus `latest` for the default branch.
 
 To use these in Docker Swarm, reference the GHCR image tags in your stack file instead of local `build:` blocks.
+
+## Docker Swarm Deployment
+
+Use `docker-compose.swarm.yml` for Swarm stacks.
+
+Important Swarm note:
+- `env_file` is not used by `docker stack deploy`, so the stack file defines explicit `environment` keys.
+
+### 1) Export environment variables on your manager node
+
+Example:
+
+```bash
+export DJANGO_SECRET_KEY='replace-me'
+export DJANGO_DEBUG='False'
+export DJANGO_ALLOWED_HOSTS='example.com,localhost,127.0.0.1'
+
+export POSTGRES_DB='simpwatch'
+export POSTGRES_USER='simpwatch'
+export POSTGRES_PASSWORD='replace-me'
+export POSTGRES_HOST='db'
+export POSTGRES_PORT='5432'
+export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+
+export SIMP_DEFAULT_POINTS='1'
+export SIMP_DEFAULT_COOLDOWN_SECONDS='0'
+
+export TWITCH_BOT_USERNAME='your-bot-name'
+export TWITCH_OAUTH_TOKEN='oauth:your-token'
+export TWITCH_CHANNELS='channel_one,channel_two'
+
+export DISCORD_BOT_TOKEN='your-discord-token'
+export DISCORD_GUILD_ID='your-guild-id'
+
+export WEB_IMAGE='ghcr.io/<owner>/simpwatch-web:latest'
+export BOT_TWITCH_IMAGE='ghcr.io/<owner>/simpwatch-bot-twitch:latest'
+export BOT_DISCORD_IMAGE='ghcr.io/<owner>/simpwatch-bot-discord:latest'
+```
+
+### 2) Deploy stack
+
+```bash
+docker stack deploy -c docker-compose.swarm.yml simpwatch
+```
+
+### 3) Verify
+
+```bash
+docker stack services simpwatch
+docker service logs -f simpwatch_web
+docker service logs -f simpwatch_bot_twitch
+docker service logs -f simpwatch_bot_discord
+```

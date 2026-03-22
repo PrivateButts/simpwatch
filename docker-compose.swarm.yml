@@ -1,0 +1,112 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - simpwatch
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/replace-me/simpwatch-web:latest}
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DATABASE_URL: ${DATABASE_URL}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      SIMP_DEFAULT_POINTS: ${SIMP_DEFAULT_POINTS:-1}
+      SIMP_DEFAULT_COOLDOWN_SECONDS: ${SIMP_DEFAULT_COOLDOWN_SECONDS:-0}
+    command: >-
+      sh -c "python manage.py migrate && python manage.py collectstatic --noinput
+      && gunicorn config.wsgi:application --bind 0.0.0.0:8000"
+    ports:
+      - target: 8000
+        published: 8000
+        protocol: tcp
+        mode: ingress
+    networks:
+      - simpwatch
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  bot_twitch:
+    image: ${BOT_TWITCH_IMAGE:-ghcr.io/replace-me/simpwatch-bot-twitch:latest}
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DATABASE_URL: ${DATABASE_URL}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      SIMP_DEFAULT_POINTS: ${SIMP_DEFAULT_POINTS:-1}
+      SIMP_DEFAULT_COOLDOWN_SECONDS: ${SIMP_DEFAULT_COOLDOWN_SECONDS:-0}
+      TWITCH_BOT_USERNAME: ${TWITCH_BOT_USERNAME}
+      TWITCH_OAUTH_TOKEN: ${TWITCH_OAUTH_TOKEN}
+      TWITCH_CHANNELS: ${TWITCH_CHANNELS}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+    command: python -m services.twitch_bot.main
+    networks:
+      - simpwatch
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  bot_discord:
+    image: ${BOT_DISCORD_IMAGE:-ghcr.io/replace-me/simpwatch-bot-discord:latest}
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DATABASE_URL: ${DATABASE_URL}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      SIMP_DEFAULT_POINTS: ${SIMP_DEFAULT_POINTS:-1}
+      SIMP_DEFAULT_COOLDOWN_SECONDS: ${SIMP_DEFAULT_COOLDOWN_SECONDS:-0}
+      TWITCH_BOT_USERNAME: ${TWITCH_BOT_USERNAME:-}
+      TWITCH_OAUTH_TOKEN: ${TWITCH_OAUTH_TOKEN:-}
+      TWITCH_CHANNELS: ${TWITCH_CHANNELS:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+    command: python -m services.discord_bot.main
+    networks:
+      - simpwatch
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  postgres_data:
+
+networks:
+  simpwatch:
+    driver: overlay

@@ -217,6 +217,37 @@
       color: var(--accent);
       padding-right: 12px !important;
       width: 45%;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s ease;
+      position: relative;
+    }
+
+    .cmd:hover,
+    .cmd:focus {
+      color: #ff8a65;
+      outline: none;
+    }
+
+    .cmd::after {
+      content: "Click to copy";
+      margin-left: 8px;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      font-size: 0.72rem;
+      color: var(--muted);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .cmd:hover::after,
+    .cmd:focus::after {
+      opacity: 1;
+    }
+
+    .cmd.copied::after {
+      content: "Copied";
+      color: #35b56a;
+      opacity: 1;
     }
 
     .channel-list {
@@ -509,6 +540,70 @@
       </article>
     </section>
   </main>
+  <script>
+  (function () {
+    const commandCells = document.querySelectorAll('.cmd');
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'absolute';
+      area.style.left = '-9999px';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    }
+
+    function cleanCommandText(text) {
+      return text.replace(/\s+/g, ' ').trim();
+    }
+
+    function flashCopied(el) {
+      el.classList.add('copied');
+      setTimeout(() => {
+        el.classList.remove('copied');
+      }, 1000);
+    }
+
+    async function handleCopy(el) {
+      const commandText = cleanCommandText(el.innerText || el.textContent || '');
+      if (!commandText) {
+        return;
+      }
+
+      try {
+        await copyText(commandText);
+        flashCopied(el);
+      } catch (err) {
+        console.error('Unable to copy command:', err);
+      }
+    }
+
+    commandCells.forEach((el) => {
+      el.setAttribute('tabindex', '0');
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', `Copy command ${cleanCommandText(el.innerText || el.textContent || '')}`);
+
+      el.addEventListener('click', () => {
+        handleCopy(el);
+      });
+
+      el.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleCopy(el);
+        }
+      });
+    });
+  })();
+  </script>
 </body>
 
 </html>

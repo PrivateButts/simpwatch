@@ -261,7 +261,9 @@ def leaderboard_page(request):
             "bamder_recent_events": _bamder_recent_events(window),
             "recent_events": _recent_events(window),
             "watched_channels": channels,
-            "twitch_configured": bool(getattr(settings, "TWITCH_BOT_USERNAME", "") or channels),
+            "twitch_configured": bool(
+                getattr(settings, "TWITCH_BOT_USERNAME", "") or channels
+            ),
             "twitch_bot_username": getattr(settings, "TWITCH_BOT_USERNAME", ""),
             "discord_configured": bool(getattr(settings, "DISCORD_BOT_TOKEN", "")),
         }

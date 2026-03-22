@@ -217,6 +217,24 @@
       </article>
 
       <article class="panel">
+        <h2>Bamder Watch ({{ window }})</h2>
+        <p><strong>Total incidents:</strong> <span class="points">{{ bamder_total }}</span></p>
+        <div class="event-list">
+          {% for event in bamder_recent_events %}
+          <div class="event">
+            <div><strong>{{ event.actor_identity.username }}</strong> logged a bamder incident.</div>
+            {% if event.reason %}
+            <div class="reason">Reason: {{ event.reason }}</div>
+            {% endif %}
+            <div class="meta">{{ event.platform }} · {{ event.source }} · {{ event.created_at }}</div>
+          </div>
+          {% empty %}
+          <p>No bamder incidents yet for this window.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="panel">
         <h2>Recent Calls</h2>
         <div class="event-list">
           {% for event in recent_events %}

@@ -2,9 +2,11 @@ from django.test import SimpleTestCase
 
 from simpwatch.command_parsing import (
     parse_bot_mention_command,
+    parse_twitch_bamder_reason,
     parse_twitch_reason,
     parse_twitch_target,
 )
+
 
 class TwitchCommandParsingTests(SimpleTestCase):
     def test_parse_target_none_for_plain_simp(self):
@@ -55,6 +57,24 @@ class TwitchCommandParsingTests(SimpleTestCase):
             parse_twitch_reason("!simp @riikarii absolutely no chill"),
             "",
         )
+
+    def test_parse_bamder_reason_without_reason_keyword(self):
+        self.assertEqual(parse_twitch_bamder_reason("!bamder"), "")
+
+    def test_parse_bamder_reason_without_keyword_free_text(self):
+        self.assertEqual(
+            parse_twitch_bamder_reason("!bamder bad bean"),
+            "bad bean",
+        )
+
+    def test_parse_bamder_reason_with_reason_text(self):
+        self.assertEqual(
+            parse_twitch_bamder_reason("!bamder reason extra down bad today"),
+            "extra down bad today",
+        )
+
+    def test_parse_bamder_reason_keyword_without_text(self):
+        self.assertEqual(parse_twitch_bamder_reason("!bamder reason"), "")
 
 
 class BotMentionCommandParsingTests(SimpleTestCase):

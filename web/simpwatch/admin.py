@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib import messages
 
 from .models import Identity, Person, ScoreAdjustment, ScoringConfig, SimpEvent
-from .scoring import merge_people
+from .scoring import bump_leaderboard_cache_version, merge_people
 
 
 @admin.register(Person)
@@ -50,6 +50,7 @@ class IdentityAdmin(admin.ModelAdmin):
 class SimpEventAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "event_type",
         "platform",
         "actor_identity",
         "target_person",
@@ -58,7 +59,7 @@ class SimpEventAdmin(admin.ModelAdmin):
         "source",
         "created_at",
     )
-    list_filter = ("platform", "created_at")
+    list_filter = ("event_type", "platform", "created_at")
     search_fields = (
         "actor_identity__username",
         "target_person__name",
@@ -87,6 +88,15 @@ class ScoreAdjustmentAdmin(admin.ModelAdmin):
         if not obj.created_by_id:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+        bump_leaderboard_cache_version()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        bump_leaderboard_cache_version()
+
+    def delete_queryset(self, request, queryset):
+        super().delete_queryset(request, queryset)
+        bump_leaderboard_cache_version()
 
 
 @admin.register(ScoringConfig)

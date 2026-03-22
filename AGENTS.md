@@ -158,6 +158,8 @@ If you add lint/type tools, document exact commands in this file.
 - Preserve current command semantics:
   - Twitch `!simp` -> broadcaster target
   - Twitch `!simp @username` -> exact username target
+  - Twitch `!bamder` -> records bamder incident on canonical `pamder` target
+  - Twitch `!bamder reason <text>` -> same with optional reason
   - Discord `/simp target:<member>` -> selected target
 - Keep cooldown behavior controlled by configuration, not hardcoded checks.
 

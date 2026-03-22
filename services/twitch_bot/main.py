@@ -11,8 +11,19 @@ from services.common_setup import setup_django
 setup_django()
 
 from simpwatch.models import Identity  # noqa: E402
-from simpwatch.command_parsing import parse_twitch_reason, parse_twitch_target  # noqa: E402
-from simpwatch.scoring import IdentityInput, get_or_create_twitch_target, register_simp  # noqa: E402
+from simpwatch.command_parsing import (  # noqa: E402
+    parse_bot_mention_command,
+    parse_twitch_reason,
+    parse_twitch_target,
+)
+from simpwatch.scoring import (  # noqa: E402
+    IdentityInput,
+    get_leaderboard_entries,
+    get_or_create_twitch_target,
+    get_person_score_and_rank,
+    normalize_username,
+    register_simp,
+)
 
 
 class TwitchSimpBot(commands.Bot):
@@ -36,6 +47,13 @@ class TwitchSimpBot(commands.Bot):
         if message.echo:
             return
         content = (message.content or "").strip()
+
+        bot_cmd = parse_bot_mention_command(content, self.nick)
+        if bot_cmd is not None:
+            command, args = bot_cmd
+            await self._handle_bot_command(message, command, args)
+            return
+
         if not content.lower().startswith("!simp"):
             return
 
@@ -73,6 +91,41 @@ class TwitchSimpBot(commands.Bot):
             print(
                 f"simp registered twitch actor={actor_input.username} target={target_person.name} id={event.id}"
             )
+
+    async def _handle_bot_command(self, message, command: str, args: list[str]) -> None:
+        channel = message.channel
+
+        if command == "simpcheck":
+            target_username = (
+                normalize_username(args[0]) if args else message.channel.name
+            )
+            score, rank = await sync_to_async(get_person_score_and_rank)(
+                target_username
+            )
+            if rank is None:
+                await channel.send(f"{target_username} has no score yet.")
+            else:
+                await channel.send(
+                    f"{target_username} is ranked #{rank} with {score} point(s)."
+                )
+
+        elif command == "standings":
+            limit = 3
+            if args:
+                try:
+                    limit = max(1, min(int(args[0]), 10))
+                except ValueError:
+                    pass
+            entries = await sync_to_async(get_leaderboard_entries)()
+            top = entries[:limit]
+            if not top:
+                await channel.send("No standings yet!")
+            else:
+                parts = [
+                    f"#{i + 1} {row['person'].name} ({row['points']} pts)"
+                    for i, row in enumerate(top)
+                ]
+                await channel.send(f"Top {len(top)} simps: " + ", ".join(parts))
 
 
 if __name__ == "__main__":

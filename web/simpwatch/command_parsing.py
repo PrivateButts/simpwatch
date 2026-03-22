@@ -1,6 +1,28 @@
 from __future__ import annotations
 
 
+def parse_bot_mention_command(
+    content: str, bot_username: str
+) -> tuple[str, list[str]] | None:
+    """Parse a message directed at the bot as ``@bot_username command [args…]``.
+
+    Returns ``(command, args)`` where *command* is lower-cased and *args* is a
+    list of the remaining tokens.  Returns ``None`` when the message does not
+    start with a mention of *bot_username* or contains no command word.
+    """
+    parts = content.strip().split()
+    if not parts:
+        return None
+    first = parts[0].lstrip("@").lower()
+    if first != bot_username.lstrip("@").lower():
+        return None
+    if len(parts) < 2:
+        return None
+    command = parts[1].lower()
+    args = parts[2:]
+    return command, args
+
+
 def parse_twitch_target(content: str) -> str | None:
     parts = content.strip().split()
     if len(parts) < 2:

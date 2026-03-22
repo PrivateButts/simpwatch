@@ -140,6 +140,81 @@ def register_simp(
     return event
 
 
+_WINDOW_DELTAS = {
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+}
+
+
+def get_leaderboard_entries(window: str = "all") -> list[dict]:
+    """Return leaderboard rows sorted by total score descending.
+
+    Each row is a dict with keys ``person`` (Person) and ``points`` (int).
+    Supports the same window values as the web leaderboard: ``"24h"``,
+    ``"7d"``, ``"30d"``, and ``"all"`` (default).
+    """
+    delta = _WINDOW_DELTAS.get(window)
+    since = timezone.now() - delta if delta is not None else None
+
+    event_qs = SimpEvent.objects.all()
+    adjustment_qs = ScoreAdjustment.objects.all()
+    if since is not None:
+        event_qs = event_qs.filter(created_at__gte=since)
+        adjustment_qs = adjustment_qs.filter(created_at__gte=since)
+
+    event_totals = {
+        row["target_person"]: row["total"]
+        for row in event_qs.values("target_person").annotate(total=Sum("points"))
+    }
+    adjustment_totals = {
+        row["target_person"]: row["total"]
+        for row in adjustment_qs.values("target_person").annotate(
+            total=Sum("points_delta")
+        )
+    }
+    person_ids = sorted(set(event_totals.keys()) | set(adjustment_totals.keys()))
+    people = {p.id: p for p in Person.objects.filter(id__in=person_ids)}
+
+    rows = []
+    for person_id in person_ids:
+        total = (event_totals.get(person_id) or 0) + (
+            adjustment_totals.get(person_id) or 0
+        )
+        if total == 0:
+            continue
+        person = people.get(person_id)
+        if not person:
+            continue
+        rows.append({"person": person, "points": total})
+    rows.sort(key=lambda r: r["points"], reverse=True)
+    return rows
+
+
+def get_person_score_and_rank(
+    username: str, window: str = "all"
+) -> tuple[int, int | None]:
+    """Return ``(score, rank)`` for a Twitch user by username.
+
+    Rank is 1-based and derived from the sorted leaderboard.  Returns
+    ``(0, None)`` when the person has no recorded score for the given window.
+    Only searches Twitch platform identities.
+    """
+    normalized = normalize_username(username)
+    identity = Identity.objects.filter(
+        platform=Identity.Platform.TWITCH, username=normalized
+    ).first()
+    if not identity:
+        return 0, None
+
+    target_person = identity.person
+    entries = get_leaderboard_entries(window)
+    for rank, row in enumerate(entries, start=1):
+        if row["person"].id == target_person.id:
+            return row["points"], rank
+    return 0, None
+
+
 def person_total_score(person: Person, since=None) -> int:
     events = SimpEvent.objects.filter(target_person=person)
     adjustments = ScoreAdjustment.objects.filter(target_person=person)

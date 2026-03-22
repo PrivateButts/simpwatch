@@ -70,3 +70,42 @@ class LeaderboardViewTests(TestCase):
 
         self.assertEqual(payload["leaderboard"], [])
         self.assertEqual(payload["narc_leaderboard"], [])
+
+    def test_bamder_events_are_reported_separately(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=Person.objects.create(name="pamder"),
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.BAMDER,
+            source="streamer",
+            points=1,
+            reason="misbehaving",
+            message_id="b1",
+        )
+
+        response = self.client.get("/api/leaderboard", {"window": "all"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["bamder_total"], 1)
+        self.assertEqual(len(payload["bamder_recent_events"]), 1)
+        self.assertEqual(payload["bamder_recent_events"][0]["reason"], "misbehaving")
+
+    def test_bamder_events_do_not_affect_simp_or_narc_leaderboards(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=Person.objects.create(name="pamder"),
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.BAMDER,
+            source="streamer",
+            points=1,
+            reason="bad behavior",
+            message_id="b2",
+        )
+
+        response = self.client.get("/api/leaderboard", {"window": "all"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["leaderboard"], [])
+        self.assertEqual(payload["narc_leaderboard"], [])

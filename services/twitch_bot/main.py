@@ -10,9 +10,18 @@ from services.common_setup import setup_django
 
 setup_django()
 
-from simpwatch.models import Identity  # noqa: E402
-from simpwatch.command_parsing import parse_twitch_reason, parse_twitch_target  # noqa: E402
-from simpwatch.scoring import IdentityInput, get_or_create_twitch_target, register_simp  # noqa: E402
+from simpwatch.models import Identity, SimpEvent  # noqa: E402
+from simpwatch.command_parsing import (  # noqa: E402
+    parse_twitch_bamder_reason,
+    parse_twitch_reason,
+    parse_twitch_target,
+)
+from simpwatch.scoring import (  # noqa: E402
+    IdentityInput,
+    get_or_create_named_person,
+    get_or_create_twitch_target,
+    register_simp,
+)
 
 
 class TwitchSimpBot(commands.Bot):
@@ -36,7 +45,8 @@ class TwitchSimpBot(commands.Bot):
         if message.echo:
             return
         content = (message.content or "").strip()
-        if not content.lower().startswith("!simp"):
+        lowered = content.lower()
+        if not lowered.startswith("!simp") and not lowered.startswith("!bamder"):
             return
 
         actor_input = IdentityInput(
@@ -46,23 +56,29 @@ class TwitchSimpBot(commands.Bot):
             display_name=message.author.display_name or message.author.name,
         )
 
-        target_username = parse_twitch_target(content)
-        if target_username:
-            target_person = await sync_to_async(get_or_create_twitch_target)(
-                target_username
-            )
+        if lowered.startswith("!bamder"):
+            target_person = await sync_to_async(get_or_create_named_person)("pamder")
+            reason = parse_twitch_bamder_reason(content)
+            event_type = str(SimpEvent.EventType.BAMDER)
         else:
-            broadcaster = message.channel.name
-            target_person = await sync_to_async(get_or_create_twitch_target)(
-                broadcaster
-            )
-
-        reason = parse_twitch_reason(content)
+            target_username = parse_twitch_target(content)
+            if target_username:
+                target_person = await sync_to_async(get_or_create_twitch_target)(
+                    target_username
+                )
+            else:
+                broadcaster = message.channel.name
+                target_person = await sync_to_async(get_or_create_twitch_target)(
+                    broadcaster
+                )
+            reason = parse_twitch_reason(content)
+            event_type = str(SimpEvent.EventType.SIMP)
 
         event = await sync_to_async(register_simp)(
             actor=actor_input,
             target=target_person,
             platform=Identity.Platform.TWITCH,
+            event_type=event_type,
             source=message.channel.name,
             reason=reason,
             raw_content=content,
@@ -71,7 +87,7 @@ class TwitchSimpBot(commands.Bot):
         )
         if event:
             print(
-                f"simp registered twitch actor={actor_input.username} target={target_person.name} id={event.id}"
+                f"event registered twitch type={event_type} actor={actor_input.username} target={target_person.name} id={event.id}"
             )
 
 

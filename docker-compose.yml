@@ -1,4 +1,8 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:
@@ -24,12 +28,16 @@ services:
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
       DJANGO_TRUST_X_FORWARDED_PROTO: ${DJANGO_TRUST_X_FORWARDED_PROTO:-False}
       DJANGO_USE_X_FORWARDED_HOST: ${DJANGO_USE_X_FORWARDED_HOST:-False}
+      CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
+      LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
     command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000"
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   bot_twitch:
@@ -38,10 +46,15 @@ services:
       dockerfile: services/twitch_bot/Dockerfile
     env_file:
       - .env
+    environment:
+      CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
+      LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
     command: python -m services.twitch_bot.main
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   bot_discord:
@@ -50,10 +63,15 @@ services:
       dockerfile: services/discord_bot/Dockerfile
     env_file:
       - .env
+    environment:
+      CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
+      LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
     command: python -m services.discord_bot.main
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

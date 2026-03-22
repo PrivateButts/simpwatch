@@ -37,6 +37,10 @@ class Identity(models.Model):
 
 
 class SimpEvent(models.Model):
+    class EventType(models.TextChoices):
+        SIMP = "simp", "Simp"
+        BAMDER = "bamder", "Bamder"
+
     class Platform(models.TextChoices):
         TWITCH = "twitch", "Twitch"
         DISCORD = "discord", "Discord"
@@ -48,6 +52,11 @@ class SimpEvent(models.Model):
         Person, on_delete=models.CASCADE, related_name="received_events"
     )
     platform = models.CharField(max_length=20, choices=Platform.choices)
+    event_type = models.CharField(
+        max_length=20,
+        choices=EventType.choices,
+        default=EventType.SIMP,
+    )
     source = models.CharField(max_length=255)
     points = models.IntegerField(default=1)
     raw_content = models.TextField(blank=True)
@@ -64,7 +73,10 @@ class SimpEvent(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.platform}:{self.actor_identity} -> {self.target_person} (+{self.points})"
+        return (
+            f"{self.platform}:{self.event_type}:{self.actor_identity}"
+            f" -> {self.target_person} (+{self.points})"
+        )
 
 
 class ScoreAdjustment(models.Model):

@@ -5,11 +5,36 @@ from datetime import timedelta
 from typing import Iterable
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
 from .models import Identity, Person, ScoreAdjustment, ScoringConfig, SimpEvent
+
+
+LEADERBOARD_CACHE_VERSION_KEY = "leaderboard:version"
+
+
+def current_leaderboard_cache_version() -> int:
+    try:
+        value = cache.get(LEADERBOARD_CACHE_VERSION_KEY)
+        if value is None:
+            cache.set(LEADERBOARD_CACHE_VERSION_KEY, 1, None)
+            return 1
+        return int(value)
+    except Exception:
+        return 1
+
+
+def bump_leaderboard_cache_version() -> int:
+    try:
+        return int(cache.incr(LEADERBOARD_CACHE_VERSION_KEY))
+    except ValueError:
+        cache.set(LEADERBOARD_CACHE_VERSION_KEY, 2, None)
+        return 2
+    except Exception:
+        return 1
 
 
 @dataclass
@@ -117,6 +142,7 @@ def register_simp(
     target: Person,
     platform: str,
     source: str,
+    event_type: str = str(SimpEvent.EventType.SIMP),
     reason: str = "",
     raw_content: str = "",
     message_id: str = "",
@@ -130,6 +156,7 @@ def register_simp(
         actor_identity=actor_identity,
         target_person=target,
         platform=platform,
+        event_type=event_type,
         source=source,
         points=config.default_points,
         reason=reason,
@@ -137,7 +164,16 @@ def register_simp(
         message_id=message_id,
         dedupe_key=dedupe_key,
     )
+    bump_leaderboard_cache_version()
     return event
+
+
+def get_or_create_named_person(name: str) -> Person:
+    normalized = normalize_username(name)
+    person = Person.objects.filter(name__iexact=normalized).first()
+    if person:
+        return person
+    return Person.objects.create(name=normalized)
 
 
 def person_total_score(person: Person, since=None) -> int:
@@ -168,4 +204,5 @@ def merge_people(target: Person, sources: Iterable[Person]) -> int:
     )
 
     deleted_count, _ = Person.objects.filter(id__in=source_ids).delete()
+    bump_leaderboard_cache_version()
     return deleted_count

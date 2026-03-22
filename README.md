@@ -12,6 +12,7 @@ SimpWatch tracks `!simp` callouts from Twitch and `/simp` calls from Discord, th
   - `!simp @username` -> credits exact username
   - optional reason: `!simp @username reason <text>`, `!simp reason <text>`,
     `!simp @username because <text>`, or `!simp because <text>`
+  - bamder incidents: `!bamder`, `!bamder <text>`, or `!bamder reason <text>`
 
 Examples:
 - `!simp`
@@ -20,6 +21,9 @@ Examples:
 - `!simp @riikarii reason gifted 10 subs`
 - `!simp because sent another dono`
 - `!simp @riikarii because sent another dono`
+- `!bamder`
+- `!bamder bad bean`
+- `!bamder reason was out of pocket`
 - Discord slash-only command:
   - `/simp target:<user> reason:<optional text>`
 - Django admin for identity linking and score moderation
@@ -69,6 +73,8 @@ docker compose exec web python manage.py createsuperuser
 
 - `SIMP_DEFAULT_POINTS`: default `1`
 - `SIMP_DEFAULT_COOLDOWN_SECONDS`: default `0` (disabled)
+- `CACHE_URL`: default `redis://redis:6379/1`
+- `LEADERBOARD_CACHE_TTL_SECONDS`: default `15` for near-real-time freshness
 - `DJANGO_CSRF_TRUSTED_ORIGINS`: empty by default
 - `DJANGO_TRUST_X_FORWARDED_PROTO`: `False` by default
 - `DJANGO_USE_X_FORWARDED_HOST`: `False` by default
@@ -195,6 +201,8 @@ export POSTGRES_PASSWORD='replace-me'
 export POSTGRES_HOST='db'
 export POSTGRES_PORT='5432'
 export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+export CACHE_URL='redis://redis:6379/1'
+export LEADERBOARD_CACHE_TTL_SECONDS='15'
 
 export SIMP_DEFAULT_POINTS='1'
 export SIMP_DEFAULT_COOLDOWN_SECONDS='0'

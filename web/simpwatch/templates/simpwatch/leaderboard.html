@@ -236,6 +236,94 @@
       border-bottom: none;
     }
 
+    .channel-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .channel-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--event-bg);
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+
+    .channel-card:hover {
+      border-color: var(--accent);
+    }
+
+    .channel-card.is-live {
+      border-color: #9146ff;
+    }
+
+    .channel-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .channel-avatar-placeholder {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    .channel-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .channel-name-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .live-badge {
+      display: inline-block;
+      background: #9146ff;
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 2px 5px;
+      border-radius: 4px;
+      line-height: 1.3;
+      flex-shrink: 0;
+    }
+
+    .channel-stats {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .channel-stream-title {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-style: italic;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .muted {
       color: var(--muted);
       font-size: 0.88rem;
@@ -327,6 +415,7 @@
       <article class="panel">
         <h2>Help</h2>
         <div class="help-grid">
+          {% if twitch_configured %}
           <div>
             <h3>Twitch Commands</h3>
             <table class="cmd-table">
@@ -352,17 +441,19 @@
                   <td>Log a bamder incident with a reason</td>
                 </tr>
                 <tr>
-                  <td class="cmd">@bot simpcheck [user]</td>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simpcheck [user]</td>
                   <td>Check rank and score for a user</td>
                 </tr>
                 <tr>
-                  <td class="cmd">@bot standings [n]</td>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} standings [n]</td>
                   <td>Show top N standings (default 3, max 10)</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          {% endif %}
           <div class="help-right">
+            {% if discord_configured %}
             <div>
               <h3>Discord Commands</h3>
               <table class="cmd-table">
@@ -378,18 +469,41 @@
                 </tbody>
               </table>
             </div>
+            {% endif %}
+            {% if watched_channels %}
             <div>
               <h3>Watched Channels</h3>
-              {% if watched_channels %}
-              <ul class="channel-list">
+              <div class="channel-cards">
                 {% for channel in watched_channels %}
-                <li>twitch.tv/{{ channel }}</li>
+                <a href="https://twitch.tv/{{ channel.login }}" target="_blank" rel="noopener noreferrer"
+                   class="channel-card{% if channel.is_live %} is-live{% endif %}">
+                  {% if channel.profile_image_url %}
+                  <img src="{{ channel.profile_image_url }}" alt="{{ channel.display_name }}" class="channel-avatar">
+                  {% else %}
+                  <div class="channel-avatar-placeholder"></div>
+                  {% endif %}
+                  <div class="channel-info">
+                    <div class="channel-name-row">
+                      <span>{{ channel.display_name }}</span>
+                      {% if channel.is_live %}<span class="live-badge">LIVE</span>{% endif %}
+                    </div>
+                    {% if channel.is_live %}
+                    <div class="channel-stats">
+                      {{ channel.viewer_count }} viewers{% if channel.game_name %} · {{ channel.game_name }}{% endif %}
+                    </div>
+                    {% if channel.stream_title %}
+                    <div class="channel-stream-title">{{ channel.stream_title }}</div>
+                    {% endif %}
+                    {% endif %}
+                  </div>
+                </a>
                 {% endfor %}
-              </ul>
-              {% else %}
-              <p class="muted">No channels configured.</p>
-              {% endif %}
+              </div>
             </div>
+            {% endif %}
+            {% if not twitch_configured and not discord_configured and not watched_channels %}
+            <p class="muted">No integrations configured.</p>
+            {% endif %}
           </div>
         </div>
       </article>

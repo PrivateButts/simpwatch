@@ -1,3 +1,7 @@
+import json
+import logging
+import urllib.error
+import urllib.request
 from datetime import timedelta
 
 from django.conf import settings
@@ -10,6 +14,8 @@ from django.utils import timezone
 
 from .models import Person, ScoreAdjustment, SimpEvent
 from .scoring import current_leaderboard_cache_version
+
+logger = logging.getLogger(__name__)
 
 
 WINDOWS = {
@@ -138,6 +144,106 @@ def _watched_channels() -> list[str]:
     return list(getattr(settings, "TWITCH_CHANNELS", []))
 
 
+_TWITCH_CHANNEL_CACHE_KEY = "twitch_channel_data"
+_TWITCH_CHANNEL_CACHE_TTL = 60  # seconds
+
+
+def _fetch_twitch_channel_data(channels: list[str]) -> dict[str, dict]:
+    """Fetch channel profile and live-stream data from the Twitch Helix API.
+
+    Returns a mapping of login -> enriched dict, or empty dict on failure.
+    """
+    client_id: str = getattr(settings, "TWITCH_CLIENT_ID", "")
+    token: str = getattr(settings, "TWITCH_OAUTH_TOKEN", "")
+    # TwitchIO stores the token without the oauth: prefix, but strip it just in case.
+    if token.lower().startswith("oauth:"):
+        token = token[6:]
+    if not client_id or not token:
+        logger.debug(
+            "Twitch channel enrichment skipped: TWITCH_CLIENT_ID=%s TWITCH_OAUTH_TOKEN=%s",
+            "set" if client_id else "unset",
+            "set" if token else "unset",
+        )
+        return {}
+
+    headers = {
+        "Client-Id": client_id,
+        "Authorization": f"Bearer {token}",
+    }
+
+    user_params = "&".join(f"login={ch}" for ch in channels)
+    stream_params = "&".join(f"user_login={ch}" for ch in channels)
+    user_url = f"https://api.twitch.tv/helix/users?{user_params}"
+    stream_url = f"https://api.twitch.tv/helix/streams?{stream_params}"
+
+    try:
+        req = urllib.request.Request(user_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            user_data = json.loads(resp.read())
+
+        req = urllib.request.Request(stream_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            stream_data = json.loads(resp.read())
+    except Exception:
+        logger.warning("Failed to fetch Twitch channel data", exc_info=True)
+        return {}
+
+    users = {u["login"].lower(): u for u in user_data.get("data", [])}
+    live = {s["user_login"].lower(): s for s in stream_data.get("data", [])}
+
+    result: dict[str, dict] = {}
+    for channel in channels:
+        login = channel.lower()
+        user = users.get(login, {})
+        stream = live.get(login)
+        result[login] = {
+            "login": login,
+            "display_name": user.get("display_name", channel),
+            "profile_image_url": user.get("profile_image_url", ""),
+            "is_live": stream is not None,
+            "viewer_count": stream["viewer_count"] if stream else 0,
+            "stream_title": stream["title"] if stream else "",
+            "game_name": stream["game_name"] if stream else "",
+            "has_data": bool(user),
+        }
+    return result
+
+
+def _watched_channels_enriched() -> list[dict]:
+    """Return channel list, enriched with Twitch API data when credentials are set."""
+    channels = list(getattr(settings, "TWITCH_CHANNELS", []))
+    if not channels:
+        return []
+
+    cached = cache.get(_TWITCH_CHANNEL_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    api_data = _fetch_twitch_channel_data(channels)
+
+    result = []
+    for channel in channels:
+        login = channel.lower()
+        if login in api_data:
+            result.append(api_data[login])
+        else:
+            result.append(
+                {
+                    "login": login,
+                    "display_name": channel,
+                    "profile_image_url": "",
+                    "is_live": False,
+                    "viewer_count": 0,
+                    "stream_title": "",
+                    "game_name": "",
+                    "has_data": False,
+                }
+            )
+
+    cache.set(_TWITCH_CHANNEL_CACHE_KEY, result, _TWITCH_CHANNEL_CACHE_TTL)
+    return result
+
+
 def leaderboard_page(request):
     window = request.GET.get("window", "all")
     if window not in WINDOWS:
@@ -145,6 +251,7 @@ def leaderboard_page(request):
     key = _cache_key("page", window)
     context = cache.get(key)
     if context is None:
+        channels = _watched_channels_enriched()
         context = {
             "window": window,
             "windows": list(WINDOWS.keys()),
@@ -153,7 +260,10 @@ def leaderboard_page(request):
             "bamder_total": _bamder_total(window),
             "bamder_recent_events": _bamder_recent_events(window),
             "recent_events": _recent_events(window),
-            "watched_channels": _watched_channels(),
+            "watched_channels": channels,
+            "twitch_configured": bool(getattr(settings, "TWITCH_BOT_USERNAME", "") or channels),
+            "twitch_bot_username": getattr(settings, "TWITCH_BOT_USERNAME", ""),
+            "discord_configured": bool(getattr(settings, "DISCORD_BOT_TOKEN", "")),
         }
         cache.set(key, context, _cache_ttl())
     return render(request, "simpwatch/leaderboard.html", context)

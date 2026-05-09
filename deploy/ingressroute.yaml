@@ -1,0 +1,14 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: simpwatch
+  namespace: simpwatch
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`simpwatch.k3s.local`)
+      services:
+        - name: simpwatch-web
+          port: 80

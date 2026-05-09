@@ -1,0 +1,358 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simpwatch-db
+  namespace: simpwatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simpwatch-db
+  template:
+    metadata:
+      labels:
+        app: simpwatch-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_DB
+                  name: simpwatch-env
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_USER
+                  name: simpwatch-env
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_PASSWORD
+                  name: simpwatch-env
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: data
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: simpwatch-db-data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simpwatch-redis
+  namespace: simpwatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simpwatch-redis
+  template:
+    metadata:
+      labels:
+        app: simpwatch-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simpwatch-web
+  namespace: simpwatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simpwatch-web
+  template:
+    metadata:
+      labels:
+        app: simpwatch-web
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/privatebutts/simpwatch-web:latest
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+            - "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000"
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: DJANGO_SECRET_KEY
+                  name: simpwatch-env
+            - name: DJANGO_DEBUG
+              value: "False"
+            - name: DJANGO_ALLOWED_HOSTS
+              value: "simpwatch.k3s.local"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: DATABASE_URL
+                  name: simpwatch-env
+            - name: CACHE_URL
+              value: "redis://simpwatch-redis:6379/1"
+            - name: POSTGRES_HOST
+              value: "simpwatch-db"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_DB
+                  name: simpwatch-env
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_USER
+                  name: simpwatch-env
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_PASSWORD
+                  name: simpwatch-env
+            - name: TWITCH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_CLIENT_ID
+                  name: simpwatch-env
+            - name: TWITCH_BOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_USERNAME
+                  name: simpwatch-env
+            - name: TWITCH_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_OAUTH_TOKEN
+                  name: simpwatch-env
+            - name: TWITCH_CHANNELS
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_CHANNELS
+                  name: simpwatch-env
+            - name: TWITCH_REPLY_CHANNELS
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_REPLY_CHANNELS
+                  name: simpwatch-env
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simpwatch-bot-twitch
+  namespace: simpwatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simpwatch-bot-twitch
+  template:
+    metadata:
+      labels:
+        app: simpwatch-bot-twitch
+    spec:
+      containers:
+        - name: bot
+          image: ghcr.io/privatebutts/simpwatch-bot-twitch:latest
+          imagePullPolicy: Always
+          command:
+            - python
+            - -m
+            - services.twitch_bot.main
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: DJANGO_SECRET_KEY
+                  name: simpwatch-env
+            - name: DJANGO_DEBUG
+              value: "False"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: DATABASE_URL
+                  name: simpwatch-env
+            - name: CACHE_URL
+              value: "redis://simpwatch-redis:6379/1"
+            - name: POSTGRES_HOST
+              value: "simpwatch-db"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_DB
+                  name: simpwatch-env
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_USER
+                  name: simpwatch-env
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_PASSWORD
+                  name: simpwatch-env
+            - name: TWITCH_BOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_USERNAME
+                  name: simpwatch-env
+            - name: TWITCH_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_OAUTH_TOKEN
+                  name: simpwatch-env
+            - name: TWITCH_CHANNELS
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_CHANNELS
+                  name: simpwatch-env
+            - name: TWITCH_REPLY_CHANNELS
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_REPLY_CHANNELS
+                  name: simpwatch-env
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: DISCORD_BOT_TOKEN
+                  name: simpwatch-env
+            - name: DISCORD_GUILD_ID
+              valueFrom:
+                secretKeyRef:
+                  key: DISCORD_GUILD_ID
+                  name: simpwatch-env
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simpwatch-bot-discord
+  namespace: simpwatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simpwatch-bot-discord
+  template:
+    metadata:
+      labels:
+        app: simpwatch-bot-discord
+    spec:
+      containers:
+        - name: bot
+          image: ghcr.io/privatebutts/simpwatch-bot-discord:latest
+          imagePullPolicy: Always
+          command:
+            - python
+            - -m
+            - services.discord_bot.main
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: DJANGO_SECRET_KEY
+                  name: simpwatch-env
+            - name: DJANGO_DEBUG
+              value: "False"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: DATABASE_URL
+                  name: simpwatch-env
+            - name: CACHE_URL
+              value: "redis://simpwatch-redis:6379/1"
+            - name: POSTGRES_HOST
+              value: "simpwatch-db"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_DB
+                  name: simpwatch-env
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_USER
+                  name: simpwatch-env
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_PASSWORD
+                  name: simpwatch-env
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: DISCORD_BOT_TOKEN
+                  name: simpwatch-env
+            - name: DISCORD_GUILD_ID
+              valueFrom:
+                secretKeyRef:
+                  key: DISCORD_GUILD_ID
+                  name: simpwatch-env
+            - name: TWITCH_BOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_USERNAME
+                  name: simpwatch-env
+            - name: TWITCH_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_OAUTH_TOKEN
+                  name: simpwatch-env
+            - name: TWITCH_CHANNELS
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_CHANNELS
+                  name: simpwatch-env
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

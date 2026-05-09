@@ -1,0 +1,52 @@
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: simpwatch
+  namespace: fleet-default
+spec:
+  # Git repository details
+  repo: https://github.com/PrivateButts/simpwatch
+  branch: main
+  
+  # Target cluster (local cluster by default)
+  targets:
+    - name: local
+      clusterSelector:
+        matchLabels:
+          fleet.cattle.io/agent-namespace: fleet-system
+
+  # Helm chart configuration
+  paths:
+    - helm/simpwatch
+
+  # Helm values
+  helmValues:
+    namespace: simpwatch
+    image:
+      registry: ghcr.io
+      pullPolicy: IfNotPresent
+    web:
+      image:
+        repository: privatebutts/simpwatch-web
+    twitchBot:
+      image:
+        repository: privatebutts/simpwatch-bot-twitch
+    discordBot:
+      image:
+        repository: privatebutts/simpwatch-bot-discord
+    ingress:
+      enabled: true
+      className: traefik
+      hosts:
+        - host: simpwatch.local
+          paths:
+            - path: /
+              pathType: Prefix
+  
+  # Auto-update strategy
+  gitCloneSecretName: ""  # Leave empty for public repos; set to secret name if private
+  forceSyncGeneration: 0
+  pollingInterval: 15m
+  
+  # Cleanup on delete
+  deleteNamespace: false

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "simpwatch.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "simpwatch.labels" . | nindent 4 }}
+data:
+  DJANGO_DEBUG: {{ .Values.env.DJANGO_DEBUG | quote }}
+  DJANGO_ALLOWED_HOSTS: {{ .Values.env.DJANGO_ALLOWED_HOSTS | quote }}
+  DJANGO_TRUST_X_FORWARDED_PROTO: {{ .Values.env.DJANGO_TRUST_X_FORWARDED_PROTO | quote }}
+  DJANGO_USE_X_FORWARDED_HOST: {{ .Values.env.DJANGO_USE_X_FORWARDED_HOST | quote }}
+  CACHE_URL: {{ .Values.env.CACHE_URL | quote }}
+  LEADERBOARD_CACHE_TTL_SECONDS: {{ .Values.env.LEADERBOARD_CACHE_TTL_SECONDS | quote }}
+  SIMP_DEFAULT_POINTS: {{ .Values.env.SIMP_DEFAULT_POINTS | quote }}
+  SIMP_DEFAULT_COOLDOWN_SECONDS: {{ .Values.env.SIMP_DEFAULT_COOLDOWN_SECONDS | quote }}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"

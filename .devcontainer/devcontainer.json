@@ -1,0 +1,34 @@
+{
+  "name": "simpwatch",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "devcontainer",
+  "runServices": ["db", "redis", "devcontainer"],
+  "workspaceFolder": "/workspaces/simpwatch",
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "pip install --no-cache-dir -r web/requirements-dev.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.testing.cwd": "/workspaces/simpwatch/web",
+        "python.testing.pytestArgs": ["simpwatch/tests"],
+        "python.envFile": "/workspaces/simpwatch/.vscode/.env.testing",
+        "python.analysis.extraPaths": [
+          "/workspaces/simpwatch",
+          "/workspaces/simpwatch/web"
+        ]
+      }
+    }
+  }
+}

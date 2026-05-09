@@ -1,0 +1,17 @@
+apiVersion: v2
+name: simpwatch
+description: Helm chart for Simpwatch - Twitch/Discord simp leaderboard application
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - simpwatch
+  - django
+  - twitch
+  - discord
+  - leaderboard
+home: https://github.com/PrivateButts/simpwatch
+sources:
+  - https://github.com/PrivateButts/simpwatch
+maintainers:
+  - name: Simpwatch Team

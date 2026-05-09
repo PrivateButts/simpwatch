@@ -1,0 +1,95 @@
+# Example: Fleet configuration for production deployments
+# Use this as a template for deploying to different clusters or environments
+# Apply with: kubectl apply -f fleet-production.yaml
+
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: simpwatch-production
+  namespace: fleet-default
+spec:
+  # Git repository details
+  repo: https://github.com/PrivateButts/simpwatch
+  branch: main
+  
+  # Target production clusters by label
+  targets:
+    - name: production
+      clusterSelector:
+        matchLabels:
+          environment: production
+          cluster-type: simpwatch-prod
+
+  # Helm chart configuration
+  paths:
+    - helm/simpwatch
+
+  # Production Helm values (overrides)
+  helmValues:
+    namespace: simpwatch-prod
+    image:
+      registry: ghcr.io
+    web:
+      replicaCount: 2
+      image:
+        repository: privatebutts/simpwatch-web
+        tag: "v1.0.0"  # Pin to specific production version
+    twitchBot:
+      image:
+        repository: privatebutts/simpwatch-bot-twitch
+        tag: "v1.0.0"
+    discordBot:
+      image:
+        repository: privatebutts/simpwatch-bot-discord
+        tag: "v1.0.0"
+    postgres:
+      storage:
+        storageClassName: csi-hostpath-sc  # Production storage
+        size: 100Gi
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          cpu: 2000m
+          memory: 2Gi
+    redis:
+      storage:
+        storageClassName: csi-hostpath-sc
+        size: 10Gi
+    ingress:
+      enabled: true
+      className: traefik
+      annotations:
+        traefik.ingress.kubernetes.io/router.entrypoints: websecure
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      hosts:
+        - host: simpwatch.example.com  # Production domain
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - secretName: simpwatch-tls
+          hosts:
+            - simpwatch.example.com
+    env:
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: "simpwatch.example.com"
+      DJANGO_TRUST_X_FORWARDED_PROTO: "True"
+      DJANGO_USE_X_FORWARDED_HOST: "True"
+  
+  # Git authentication (if using private repo)
+  # gitCloneSecretName: github-credentials
+  
+  # Auto-update strategy
+  pollingInterval: 15m
+  forceSyncGeneration: 0
+  
+  # Disable deletion of namespace on GitRepo deletion
+  deleteNamespace: false
+
+---
+# Example: Label nodes/clusters for production selector
+# Apply these labels to clusters/nodes you want to target with this GitRepo
+# kubectl label nodes <node-name> environment=production cluster-type=simpwatch-prod
+# kubectl label clusters <cluster-name> environment=production cluster-type=simpwatch-prod

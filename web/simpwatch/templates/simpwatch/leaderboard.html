@@ -416,7 +416,7 @@
             {% if event.reason %}
             <div class="reason">Reason: {{ event.reason }}</div>
             {% endif %}
-            <div class="meta">{{ event.platform }} · {{ event.source }} · {{ event.created_at }}</div>
+            <div class="meta">{{ event.platform }} · {{ event.source }} · <time class="js-local-time" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></div>
           </div>
           {% empty %}
           <p>No bamder incidents yet for this window.</p>
@@ -433,7 +433,7 @@
             {% if event.reason %}
             <div class="reason">Reason: {{ event.reason }}</div>
             {% endif %}
-            <div class="meta">{{ event.platform }} · {{ event.source }} · {{ event.created_at }}</div>
+            <div class="meta">{{ event.platform }} · {{ event.source }} · <time class="js-local-time" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></div>
           </div>
           {% empty %}
           <p>No recent events.</p>
@@ -456,12 +456,16 @@
                   <td>Award a simp point to the channel broadcaster</td>
                 </tr>
                 <tr>
-                  <td class="cmd">!simp @username</td>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simp @username</td>
                   <td>Award a simp point to a specific user</td>
                 </tr>
                 <tr>
                   <td class="cmd">!simp reason &lt;text&gt;</td>
                   <td>Award a simp point with a reason</td>
+                </tr>
+                <tr>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simp @username reason &lt;text&gt;</td>
+                  <td>Award a targeted simp point with a reason</td>
                 </tr>
                 <tr>
                   <td class="cmd">!bamder</td>
@@ -542,7 +546,33 @@
   </main>
   <script>
   (function () {
+    const localTimeNodes = document.querySelectorAll('.js-local-time');
     const commandCells = document.querySelectorAll('.cmd');
+
+    function renderLocalTimes() {
+      if (!localTimeNodes.length) {
+        return;
+      }
+
+      const formatter = new Intl.DateTimeFormat(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+
+      localTimeNodes.forEach((el) => {
+        const isoValue = el.getAttribute('datetime');
+        if (!isoValue) {
+          return;
+        }
+        const parsed = new Date(isoValue);
+        if (Number.isNaN(parsed.getTime())) {
+          return;
+        }
+
+        el.textContent = formatter.format(parsed);
+        el.setAttribute('title', parsed.toLocaleString());
+      });
+    }
 
     async function copyText(text) {
       if (navigator.clipboard && window.isSecureContext) {
@@ -602,6 +632,8 @@
         }
       });
     });
+
+    renderLocalTimes();
   })();
   </script>
 </body>

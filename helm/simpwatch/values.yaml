@@ -1,0 +1,202 @@
+# Simpwatch Helm Chart Values
+# Default values for production-ready deployment to Rancher Fleet
+
+# Chart naming overrides
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: simpwatch
+
+# Image configuration
+image:
+  registry: ghcr.io
+  pullPolicy: IfNotPresent
+
+# Web service (Django application)
+web:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: privatebutts/simpwatch-web
+    tag: latest  # Override with specific image tag (e.g., "latest", "v1.0.0")
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  healthcheck:
+    enabled: true
+    path: /
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Twitch bot worker
+twitchBot:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: privatebutts/simpwatch-bot-twitch
+    tag: latest
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  healthcheck:
+    enabled: true
+    initialDelaySeconds: 45
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Discord bot worker
+discordBot:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: privatebutts/simpwatch-bot-discord
+    tag: latest
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# PostgreSQL database
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  service:
+    type: ClusterIP
+    port: 5432
+    targetPort: 5432
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  storage:
+    enabled: true
+    storageClassName: local-path  # K3s default; override for production storage
+    size: 20Gi
+  # Database credentials are stored in Rancher UI Secret: simpwatch-secrets
+  # Keys: postgres-user, postgres-password, postgres-db
+  env:
+    POSTGRES_DB: simpwatch
+    POSTGRES_USER: simpwatch
+
+# Redis cache
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+  service:
+    type: ClusterIP
+    port: 6379
+    targetPort: 6379
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  storage:
+    enabled: true
+    storageClassName: local-path  # K3s default; override for production
+    size: 2Gi
+
+# Ingress configuration (Traefik for K3s)
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    # For HTTPS (cert-manager):
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  hosts:
+    - host: simpwatch.local  # Override with your domain (e.g., simpwatch.example.com)
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # Example:
+  # tls:
+  #   - secretName: simpwatch-tls
+  #     hosts:
+  #       - simpwatch.example.com
+
+# ConfigMap environment variables (non-sensitive)
+env:
+  DJANGO_DEBUG: "False"
+  DJANGO_ALLOWED_HOSTS: "simpwatch.local"  # Update to match ingress host
+  DJANGO_TRUST_X_FORWARDED_PROTO: "False"  # Set True if behind reverse proxy
+  DJANGO_USE_X_FORWARDED_HOST: "False"     # Set True if behind reverse proxy
+  CACHE_URL: "redis://redis:6379/1"
+  LEADERBOARD_CACHE_TTL_SECONDS: "15"
+  SIMP_DEFAULT_POINTS: "1"
+  SIMP_DEFAULT_COOLDOWN_SECONDS: "60"
+
+# Secrets (created in Rancher UI)
+# Reference secret name: simpwatch-secrets
+# Required keys in secret:
+#   - django-secret-key (DJANGO_SECRET_KEY)
+#   - postgres-user (POSTGRES_USER)
+#   - postgres-password (POSTGRES_PASSWORD)
+#   - postgres-db (POSTGRES_DB)
+#   - twitch-oauth-token (TWITCH_OAUTH_TOKEN)
+#   - twitch-bot-username (TWITCH_BOT_USERNAME)
+#   - twitch-channels (TWITCH_CHANNELS)
+#   - discord-bot-token (DISCORD_BOT_TOKEN)
+#   - discord-guild-id (DISCORD_GUILD_ID)
+secretName: simpwatch-secrets
+
+# Django migrations
+migrations:
+  enabled: true
+  # Runs as pre-upgrade/pre-install hook
+  image:
+    repository: privatebutts/simpwatch-web
+    tag: latest
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Service Account
+serviceAccount:
+  create: true
+  name: simpwatch
+
+# Pod Security Context
+podSecurityContext: {}
+
+# Node selector (optional)
+nodeSelector: {}
+
+# Tolerations (optional, for taints)
+tolerations: []
+
+# Affinity rules (optional)
+affinity: {}

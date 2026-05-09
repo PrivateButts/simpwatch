@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from simpwatch.command_parsing import (
+    parse_bot_simp_args,
     parse_bot_mention_command,
     parse_twitch_bamder_reason,
     parse_twitch_reason,
@@ -113,3 +114,40 @@ class BotMentionCommandParsingTests(SimpleTestCase):
 
     def test_empty_content_returns_none(self):
         self.assertIsNone(parse_bot_mention_command("", "mybot"))
+
+
+class BotMentionSimpArgParsingTests(SimpleTestCase):
+    def test_requires_target_mention(self):
+        self.assertIsNone(parse_bot_simp_args([]))
+        self.assertIsNone(parse_bot_simp_args(["riikarii"]))
+
+    def test_rejects_empty_mention_target(self):
+        self.assertIsNone(parse_bot_simp_args(["@"]))
+
+    def test_target_only(self):
+        self.assertEqual(parse_bot_simp_args(["@Riikarii"]), ("riikarii", ""))
+
+    def test_target_with_reason_keyword(self):
+        self.assertEqual(
+            parse_bot_simp_args(["@riikarii", "reason", "gifted", "10", "subs"]),
+            ("riikarii", "gifted 10 subs"),
+        )
+
+    def test_target_with_because_keyword(self):
+        self.assertEqual(
+            parse_bot_simp_args(["@riikarii", "because", "sent", "another", "dono"]),
+            ("riikarii", "sent another dono"),
+        )
+
+    def test_non_keyword_tail_does_not_become_reason(self):
+        self.assertEqual(
+            parse_bot_simp_args(["@riikarii", "absolutely", "down", "bad"]),
+            ("riikarii", ""),
+        )
+
+    def test_keyword_without_text_returns_empty_reason(self):
+        self.assertEqual(parse_bot_simp_args(["@riikarii", "reason"]), ("riikarii", ""))
+        self.assertEqual(
+            parse_bot_simp_args(["@riikarii", "because"]),
+            ("riikarii", ""),
+        )

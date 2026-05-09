@@ -9,18 +9,19 @@ SimpWatch tracks `!simp` callouts from Twitch and `/simp` calls from Discord, th
 - Narc leaderboard (callout count by caller)
 - Twitch command parsing:
   - `!simp` -> credits channel broadcaster
-  - `!simp @username` -> credits exact username
-  - optional reason: `!simp @username reason <text>`, `!simp reason <text>`,
-    `!simp @username because <text>`, or `!simp because <text>`
+  - `@<bot_username> simp @username` -> credits exact username
+  - optional reason: `@<bot_username> simp @username reason <text>`,
+    `!simp reason <text>`, `@<bot_username> simp @username because <text>`,
+    or `!simp because <text>`
   - bamder incidents: `!bamder`, `!bamder <text>`, or `!bamder reason <text>`
 
 Examples:
 - `!simp`
-- `!simp @riikarii`
+- `@simplympics simp @riikarii`
 - `!simp reason gifted 10 subs`
-- `!simp @riikarii reason gifted 10 subs`
+- `@simplympics simp @riikarii reason gifted 10 subs`
 - `!simp because sent another dono`
-- `!simp @riikarii because sent another dono`
+- `@simplympics simp @riikarii because sent another dono`
 - `!bamder`
 - `!bamder bad bean`
 - `!bamder reason was out of pocket`
@@ -100,6 +101,9 @@ docker compose logs -f bot_twitch
 ```
 
 Expected log after successful auth: `Twitch bot ready: <name>`.
+The container now reports `healthy` only after the bot has connected and keeps
+refreshing its heartbeat; missing config, auth failures, or a stale/disconnected
+session will mark it `unhealthy`.
 
 ### Discord Bot
 
@@ -126,7 +130,7 @@ Expected log after successful auth: `Discord bot ready: ...`.
 
 - Twitch:
   - `!simp` in a configured channel should credit that channel broadcaster.
-  - `!simp @username` should credit the exact username target.
+  - `@<bot_username> simp @username` should credit the exact username target.
 - Discord:
   - Use `/simp target:<member>` in the server where bot is installed.
 

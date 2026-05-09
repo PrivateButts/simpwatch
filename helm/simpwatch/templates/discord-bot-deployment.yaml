@@ -1,0 +1,107 @@
+{{- if .Values.discordBot.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "simpwatch.fullname" . }}-discord-bot
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "simpwatch.labels" . | nindent 4 }}
+    app: discord-bot
+spec:
+  replicas: {{ .Values.discordBot.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "simpwatch.selectorLabels" . | nindent 6 }}
+      app: discord-bot
+  template:
+    metadata:
+      labels:
+        {{- include "simpwatch.selectorLabels" . | nindent 8 }}
+        app: discord-bot
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "simpwatch.serviceAccountName" . }}
+      containers:
+      - name: discord-bot
+        image: "{{ .Values.image.registry }}/{{ .Values.discordBot.image.repository }}:{{ .Values.discordBot.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        envFrom:
+        - configMapRef:
+            name: {{ include "simpwatch.fullname" . }}-config
+        env:
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: django-secret-key
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: postgres-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: postgres-password
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: postgres-db
+        - name: POSTGRES_HOST
+          value: postgres
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: DATABASE_URL
+          value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+        - name: DISCORD_BOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: discord-bot-token
+        - name: DISCORD_GUILD_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: discord-guild-id
+        resources:
+          {{- toYaml .Values.discordBot.resources | nindent 12 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+              - ALL
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      # Wait for dependencies before starting
+      initContainers:
+      - name: wait-for-db
+        image: "{{ .Values.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+        command:
+          - sh
+          - -c
+          - |
+            until pg_isready -h postgres -p 5432; do
+              echo 'Waiting for postgres...'
+              sleep 2
+            done
+      - name: wait-for-redis
+        image: "{{ .Values.image.registry }}/{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+        command:
+          - sh
+          - -c
+          - |
+            until redis-cli -h redis -p 6379 ping; do
+              echo 'Waiting for redis...'
+              sleep 2
+            done
+{{- end }}

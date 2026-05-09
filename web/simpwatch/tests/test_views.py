@@ -141,6 +141,7 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("!simp", content)
         self.assertIn("!bamder", content)
         self.assertIn("/simp", content)
+        self.assertIn("simp @username", content)
         self.assertIn("simpcheck", content)
         self.assertIn("standings", content)
 

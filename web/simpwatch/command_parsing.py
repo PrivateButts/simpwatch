@@ -23,6 +23,36 @@ def parse_bot_mention_command(
     return command, args
 
 
+def parse_bot_simp_args(args: list[str]) -> tuple[str, str] | None:
+    """Parse bot-mention simp arguments.
+
+    Accepts ``@target`` with optional ``reason|because <text>`` tail and
+    returns ``(target_username, reason)``. Returns ``None`` for invalid forms.
+    """
+    if not args:
+        return None
+
+    target_token = args[0]
+    if not target_token.startswith("@"):
+        return None
+
+    target_username = target_token.lstrip("@").strip().lower()
+    if not target_username:
+        return None
+
+    if len(args) < 2:
+        return target_username, ""
+
+    keyword = args[1].lower()
+    if keyword not in {"reason", "because"}:
+        return target_username, ""
+
+    if len(args) < 3:
+        return target_username, ""
+
+    return target_username, " ".join(args[2:]).strip()
+
+
 def parse_twitch_target(content: str) -> str | None:
     parts = content.strip().split()
     if len(parts) < 2:

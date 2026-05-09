@@ -1,0 +1,41 @@
+1. Get the application URL by running these commands:
+{{- if .Values.ingress.enabled }}
+  Get the ingress hostname:
+  kubectl get ingress {{ include "simpwatch.fullname" . }} -n {{ .Values.namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  
+  Web UI: http://{{ (index .Values.ingress.hosts 0).host }}
+{{- else }}
+  kubectl port-forward svc/{{ include "simpwatch.fullname" . }}-web -n {{ .Values.namespace }} 8000:8000
+  Web UI: http://localhost:8000
+{{- end }}
+
+2. Verify all services are running:
+  kubectl get pods -n {{ .Values.namespace }}
+
+3. Check deployment status:
+  kubectl rollout status deployment/{{ include "simpwatch.fullname" . }}-web -n {{ .Values.namespace }}
+  kubectl rollout status deployment/{{ include "simpwatch.fullname" . }}-twitch-bot -n {{ .Values.namespace }}
+  kubectl rollout status deployment/{{ include "simpwatch.fullname" . }}-discord-bot -n {{ .Values.namespace }}
+
+4. View logs:
+  Web service:
+    kubectl logs -f deployment/{{ include "simpwatch.fullname" . }}-web -n {{ .Values.namespace }}
+  Twitch bot:
+    kubectl logs -f deployment/{{ include "simpwatch.fullname" . }}-twitch-bot -n {{ .Values.namespace }}
+  Discord bot:
+    kubectl logs -f deployment/{{ include "simpwatch.fullname" . }}-discord-bot -n {{ .Values.namespace }}
+
+5. Access Django admin:
+  kubectl port-forward svc/{{ include "simpwatch.fullname" . }}-web -n {{ .Values.namespace }} 8000:8000
+  Then navigate to: http://localhost:8000/admin
+
+6. Check database status:
+  kubectl get statefulset postgres -n {{ .Values.namespace }}
+  kubectl exec -it postgres-0 -n {{ .Values.namespace }} -- psql -U {{ .Values.postgres.env.POSTGRES_USER }} -d {{ .Values.postgres.env.POSTGRES_DB }} -c "\dt"
+
+7. Troubleshooting:
+  - If web pod is pending, check database is ready: kubectl get statefulset postgres -n {{ .Values.namespace }}
+  - If migration job failed, check logs: kubectl logs job/{{ include "simpwatch.fullname" . }}-migrate-1 -n {{ .Values.namespace }}
+  - Verify secrets are created: kubectl get secrets -n {{ .Values.namespace }}
+
+For more information, visit: https://github.com/PrivateButts/simpwatch

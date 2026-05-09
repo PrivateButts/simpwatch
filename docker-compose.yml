@@ -50,6 +50,12 @@ services:
       CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
       LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
     command: python -m services.twitch_bot.main
+    healthcheck:
+      test: ["CMD", "python", "-m", "services.twitch_bot.healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
     depends_on:
       db:
         condition: service_healthy

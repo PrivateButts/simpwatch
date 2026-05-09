@@ -1,0 +1,85 @@
+# Production overrides for Simpwatch Helm chart
+# Apply with: helm install simpwatch helm/simpwatch/ -f helm/simpwatch/values-prod.yaml
+
+namespace: simpwatch-prod
+
+# Pin to specific production image tags
+web:
+  replicaCount: 2
+  image:
+    tag: "v1.0.0"  # Pin to specific version tag
+
+twitchBot:
+  replicaCount: 1
+  image:
+    tag: "v1.0.0"
+
+discordBot:
+  replicaCount: 1
+  image:
+    tag: "v1.0.0"
+
+postgres:
+  storage:
+    storageClassName: csi-hostpath-sc  # Override for production SSD/NFS
+    size: 100Gi
+  image:
+    tag: "16-alpine"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+redis:
+  storage:
+    storageClassName: csi-hostpath-sc  # Override for production
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+migrations:
+  image:
+    tag: "v1.0.0"
+
+# Production ingress configuration
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: simpwatch.example.com  # Change to your production domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: simpwatch-tls
+      hosts:
+        - simpwatch.example.com
+
+# Production environment variables
+env:
+  DJANGO_DEBUG: "False"
+  DJANGO_ALLOWED_HOSTS: "simpwatch.example.com"  # Update to production domain
+  DJANGO_TRUST_X_FORWARDED_PROTO: "True"
+  DJANGO_USE_X_FORWARDED_HOST: "True"
+  CACHE_URL: "redis://redis:6379/1"
+  LEADERBOARD_CACHE_TTL_SECONDS: "15"
+
+# Pod disruption budget for zero-downtime deployments
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Additional pod security can be set per environment if required.
+# Leave empty by default for image compatibility.
+podSecurityContext: {}

@@ -1,0 +1,87 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "simpwatch.labels" . | nindent 4 }}
+    app: redis
+spec:
+  clusterIP: None
+  selector:
+    app: redis
+  ports:
+    - port: {{ .Values.redis.service.port }}
+      targetPort: {{ .Values.redis.service.targetPort }}
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "simpwatch.labels" . | nindent 4 }}
+    app: redis
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        {{- include "simpwatch.selectorLabels" . | nindent 8 }}
+        app: redis
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: redis
+        image: "{{ .Values.image.registry }}/{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - redis-server
+          - "--appendonly"
+          - "yes"
+          - "--appendfsync"
+          - "everysec"
+        ports:
+        - name: redis
+          containerPort: {{ .Values.redis.service.targetPort }}
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.redis.resources | nindent 12 }}
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: {{ .Values.redis.storage.storageClassName }}
+      resources:
+        requests:
+          storage: {{ .Values.redis.storage.size }}
+{{- end }}

@@ -1,0 +1,124 @@
+{{- if .Values.web.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "simpwatch.fullname" . }}-web
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "simpwatch.labels" . | nindent 4 }}
+    app: web
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "simpwatch.selectorLabels" . | nindent 6 }}
+      app: web
+  template:
+    metadata:
+      labels:
+        {{- include "simpwatch.selectorLabels" . | nindent 8 }}
+        app: web
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "simpwatch.serviceAccountName" . }}
+      containers:
+      - name: web
+        image: "{{ .Values.image.registry }}/{{ .Values.web.image.repository }}:{{ .Values.web.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.web.service.targetPort }}
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: {{ include "simpwatch.fullname" . }}-config
+        env:
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: django-secret-key
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: postgres-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: postgres-password
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: postgres-db
+        - name: POSTGRES_HOST
+          value: postgres
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: DATABASE_URL
+          value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+        resources:
+          {{- toYaml .Values.web.resources | nindent 12 }}
+        {{- if .Values.web.healthcheck.enabled }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.web.healthcheck.path }}
+            port: http
+          initialDelaySeconds: {{ .Values.web.healthcheck.initialDelaySeconds }}
+          periodSeconds: {{ .Values.web.healthcheck.periodSeconds }}
+          timeoutSeconds: {{ .Values.web.healthcheck.timeoutSeconds }}
+          failureThreshold: {{ .Values.web.healthcheck.failureThreshold }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.web.healthcheck.path }}
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        {{- end }}
+        command:
+          - sh
+          - -c
+          - |
+            gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --worker-class sync --timeout 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+              - ALL
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      # Wait for dependencies before starting
+      initContainers:
+      - name: wait-for-db
+        image: "{{ .Values.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+        command:
+          - sh
+          - -c
+          - |
+            until pg_isready -h postgres -p 5432; do
+              echo 'Waiting for postgres...'
+              sleep 2
+            done
+      - name: wait-for-redis
+        image: "{{ .Values.image.registry }}/{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+        command:
+          - sh
+          - -c
+          - |
+            until redis-cli -h redis -p 6379 ping; do
+              echo 'Waiting for redis...'
+              sleep 2
+            done
+{{- end }}

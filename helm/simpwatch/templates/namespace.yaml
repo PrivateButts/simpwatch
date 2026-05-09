@@ -1,0 +1,11 @@
+{{- if .Values.namespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace }}
+  labels:
+    app: {{ include "simpwatch.name" . }}
+    chart: {{ include "simpwatch.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+{{- end }}

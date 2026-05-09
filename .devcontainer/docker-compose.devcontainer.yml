@@ -1,0 +1,21 @@
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      PYTHONPATH: /workspaces/simpwatch:/workspaces/simpwatch/web
+      CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
+      LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - .:/workspaces/simpwatch:cached
+    working_dir: /workspaces/simpwatch
+    command: sleep infinity

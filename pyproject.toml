@@ -23,6 +23,7 @@ dependencies = [
     "twitchio @ git+https://github.com/TwitchIO/TwitchIO.git@main",
     "discord.py==2.7.1",
     "prometheus-client==0.25.0",
+    "cryptography==45.0.4",
 ]
 
 [project.optional-dependencies]

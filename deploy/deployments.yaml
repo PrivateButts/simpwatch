@@ -155,6 +155,20 @@ spec:
                 secretKeyRef:
                   key: TWITCH_CLIENT_SECRET
                   name: simpwatch-env
+            - name: TWITCH_TOKEN_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_TOKEN_REDIRECT_URI
+                  name: simpwatch-env
+            - name: TWITCH_BROADCASTER_TOKEN_SCOPES
+              value: "channel:bot"
+            - name: TWITCH_ONBOARD_STATE_TTL_SECONDS
+              value: "600"
+            - name: TWITCH_GRANT_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_GRANT_ENCRYPTION_KEY
+                  name: simpwatch-env
             - name: TWITCH_OAUTH_TOKEN
               valueFrom:
                 secretKeyRef:

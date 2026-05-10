@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.contrib import messages
 
-from .models import Identity, Person, ScoreAdjustment, ScoringConfig, SimpEvent
+from .models import (
+    Identity,
+    Person,
+    ScoreAdjustment,
+    ScoringConfig,
+    SimpEvent,
+    TwitchBroadcasterGrant,
+)
 from .scoring import bump_leaderboard_cache_version, merge_people
 
 
@@ -102,3 +109,36 @@ class ScoreAdjustmentAdmin(admin.ModelAdmin):
 @admin.register(ScoringConfig)
 class ScoringConfigAdmin(admin.ModelAdmin):
     list_display = ("id", "cooldown_seconds", "default_points", "updated_at")
+
+
+@admin.register(TwitchBroadcasterGrant)
+class TwitchBroadcasterGrantAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "username",
+        "broadcaster_user_id",
+        "is_active",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("is_active",)
+    search_fields = ("username", "broadcaster_user_id")
+    actions = ("deactivate_grants", "activate_grants")
+
+    @admin.action(description="Deactivate selected broadcaster grants")
+    def deactivate_grants(self, request, queryset):
+        count = queryset.update(is_active=False)
+        self.message_user(
+            request,
+            f"Deactivated {count} broadcaster grant(s).",
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="Activate selected broadcaster grants")
+    def activate_grants(self, request, queryset):
+        count = queryset.update(is_active=True)
+        self.message_user(
+            request,
+            f"Activated {count} broadcaster grant(s).",
+            level=messages.SUCCESS,
+        )

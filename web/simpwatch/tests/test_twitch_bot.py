@@ -499,6 +499,28 @@ class PrometheusMetricsTests(SimpleTestCase):
         after = _counter_value("simpwatch_twitch_messages_total")
         self.assertEqual(after - before, 1.0)
 
+
+class ReplyAuthorizationTests(SimpleTestCase):
+    async def test_eventsub_send_skips_when_grant_missing(self):
+        bot = _make_bot(reply_channels={"streamerchan"})
+        msg = _message("!simp", channel="streamerchan")
+        msg.respond = AsyncMock()
+
+        with patch.object(bot, "_is_reply_authorized_for_channel", AsyncMock(return_value=False)):
+            await bot._send_message(msg, "hello")
+
+        msg.respond.assert_not_awaited()
+
+    async def test_eventsub_send_uses_respond_when_grant_present(self):
+        bot = _make_bot(reply_channels={"streamerchan"})
+        msg = _message("!simp", channel="streamerchan")
+        msg.respond = AsyncMock()
+
+        with patch.object(bot, "_is_reply_authorized_for_channel", AsyncMock(return_value=True)):
+            await bot._send_message(msg, "hello")
+
+        msg.respond.assert_awaited_once()
+
     async def test_simp_command_increments_command_metric(self):
         bot = _make_bot()
         msg = _message("!simp", channel="streamerchan")

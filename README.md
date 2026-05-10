@@ -217,6 +217,30 @@ The container now reports `healthy` only after the bot has connected and keeps
 refreshing its heartbeat; missing config, auth failures, or a stale/disconnected
 session will mark it `unhealthy`.
 
+### Broadcaster Onboarding (`channel:bot`)
+
+If the bot is not a moderator in a broadcaster's channel, that broadcaster must
+authorize your app with `channel:bot` so EventSub replies can be sent.
+
+1. Configure web env vars:
+  - `TWITCH_TOKEN_REDIRECT_URI=https://<your-domain>/oauth/twitch/callback`
+  - `TWITCH_BROADCASTER_TOKEN_SCOPES=channel:bot`
+  - `TWITCH_GRANT_ENCRYPTION_KEY=<long-random-value>`
+2. Ensure the channel login is listed in `TWITCH_CHANNELS`.
+  - Tokens are only persisted for logins in `TWITCH_CHANNELS` (case-insensitive).
+3. Send broadcaster to:
+  - `https://<your-domain>/oauth/twitch/start`
+4. Broadcaster completes Twitch consent.
+5. Verify stored grant in Django admin:
+  - `Admin -> Simpwatch -> Twitch broadcaster grants`
+
+Revocation endpoint (staff-only):
+
+- `POST /oauth/twitch/revoke` with form field `username=<channel_login>`
+
+When a grant is missing/inactive, the bot still records events but skips reply
+sending for that channel.
+
 ### Discord Bot
 
 1. Go to the Discord Developer Portal and create an application.

@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import urllib.request
+from twitchio.exceptions import HTTPException
 
 from twitchio import eventsub
 from twitchio.ext import commands
@@ -50,8 +51,9 @@ _TWITCH_REPLY_CHANNELS = {
     for c in os.getenv("TWITCH_REPLY_CHANNELS", "").split(",")
     if c.strip()
 }
+_REPLY_GRANT_CACHE_SECONDS = int(os.getenv("TWITCH_REPLY_GRANT_CACHE_SECONDS", "30"))
 
-from simpwatch.models import Identity, SimpEvent  # noqa: E402
+from simpwatch.models import Identity, SimpEvent, TwitchBroadcasterGrant  # noqa: E402
 
 from simpwatch.command_parsing import (  # noqa: E402
     parse_bot_simp_args,
@@ -145,6 +147,13 @@ def _validate_bot_token_for_eventsub(
         )
 
 
+def _has_active_broadcaster_grant(username: str) -> bool:
+    return TwitchBroadcasterGrant.objects.filter(
+        username=username,
+        is_active=True,
+    ).exists()
+
+
 class TwitchSimpBot(commands.Bot):
     def __init__(self) -> None:
         self._bot_username = os.getenv("TWITCH_BOT_USERNAME", "").strip()
@@ -160,6 +169,7 @@ class TwitchSimpBot(commands.Bot):
         self._last_irc_at: float = time.monotonic()
         self._watchdog_reconnect_attempts: int = 0
         self._reply_channels: set[str] = set(_TWITCH_REPLY_CHANNELS)
+        self._reply_grant_cache: dict[str, tuple[float, bool]] = {}
         super().__init__(
             client_id=os.getenv("TWITCH_CLIENT_ID", "").strip(),
             client_secret=self._client_secret,
@@ -244,30 +254,33 @@ class TwitchSimpBot(commands.Bot):
         For IRC/test messages: use channel.send (for backwards compatibility and tests).
         """
         if hasattr(message, "respond"):
+            channel_name = self._message_channel_name(message).strip().lower()
+            if not await self._is_reply_authorized_for_channel(channel_name):
+                logger.warning(
+                    "Skipping Twitch reply for channel=%s: missing active broadcaster grant",
+                    channel_name,
+                )
+                return
             try:
                 await message.respond(content)
                 return
+            except HTTPException as exc:
+                status = getattr(exc, "status", None)
+                detail = str(exc)
+                channel_name = self._message_channel_name(message)
+                if status == 401 and "channel:bot" in detail:
+                    logger.error(
+                        "Twitch reply unauthorized for channel=%s. "
+                        "Either grant channel:bot to this app for that broadcaster "
+                        "or make the bot a moderator in the channel.",
+                        channel_name,
+                    )
+                else:
+                    logger.exception(
+                        "Failed to send EventSub response via message.respond"
+                    )
             except Exception:
                 logger.exception("Failed to send EventSub response via message.respond")
-
-        broadcaster = getattr(message, "broadcaster", None)
-        broadcaster_id = (
-            getattr(message, "broadcaster_user_id", None)
-            or getattr(broadcaster, "id", None)
-        )
-        if broadcaster_id:
-            try:
-                await self.create_chat_message(
-                    broadcaster_id=str(broadcaster_id),
-                    sender_id=self.bot_id,
-                    message=content,
-                )
-                return
-            except Exception:
-                logger.exception(
-                    "Failed to send message via create_chat_message broadcaster_id=%s",
-                    broadcaster_id,
-                )
 
         # Fallback: try channel.send (IRC or test mocks)
         channel = getattr(message, "channel", None)
@@ -277,6 +290,21 @@ class TwitchSimpBot(commands.Bot):
 
         ctx = self.get_context(message)
         await ctx.send(content)
+
+    async def _is_reply_authorized_for_channel(self, channel_name: str) -> bool:
+        if not channel_name:
+            return False
+
+        now = time.monotonic()
+        cached = self._reply_grant_cache.get(channel_name)
+        if cached is not None:
+            ts, allowed = cached
+            if now - ts <= _REPLY_GRANT_CACHE_SECONDS:
+                return allowed
+
+        allowed = await _db_call(_has_active_broadcaster_grant, channel_name)
+        self._reply_grant_cache[channel_name] = (now, bool(allowed))
+        return bool(allowed)
 
     @staticmethod
     def _message_channel_name(message) -> str:

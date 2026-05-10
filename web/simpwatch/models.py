@@ -104,3 +104,28 @@ class ScoringConfig(models.Model):
 
     def __str__(self) -> str:
         return f"ScoringConfig(cooldown={self.cooldown_seconds}, points={self.default_points})"
+
+
+class TwitchBroadcasterGrant(models.Model):
+    username = models.CharField(max_length=255, unique=True)
+    broadcaster_user_id = models.CharField(max_length=255, unique=True)
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    scopes = models.TextField(blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["is_active", "username"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.username = self.username.strip().lower()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        status = "active" if self.is_active else "inactive"
+        return f"twitch:{self.username} ({status})"

@@ -1,10 +1,12 @@
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from unittest.mock import patch
 
-from simpwatch.models import Identity, Person, SimpEvent
+from simpwatch.models import Identity, Person, SimpEvent, TwitchBroadcasterGrant
 
 
 class LeaderboardViewTests(TestCase):
@@ -184,3 +186,147 @@ class MetricsViewTests(TestCase):
         self.assertIn("simpwatch_http_requests_total", body)
         self.assertIn("simpwatch_http_request_duration_seconds", body)
         self.assertIn("simpwatch_leaderboard_cache_total", body)
+
+
+class TwitchOnboardingViewTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(
+        TWITCH_CHANNELS=["prvbutts"],
+        TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
+    )
+    @patch("simpwatch.views._validate_twitch_access_token")
+    @patch("simpwatch.views._exchange_twitch_code_for_tokens")
+    def test_callback_stores_tokens_when_login_is_watched_channel(
+        self,
+        mock_exchange,
+        mock_validate,
+    ):
+        state = "state-ok"
+        cache.set("twitch:onboard:state:state-ok", "1", 600)
+        mock_exchange.return_value = {
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "expires_in": 3600,
+        }
+        mock_validate.return_value = {
+            "login": "prvbutts",
+            "user_id": "42490016",
+            "scopes": ["channel:bot"],
+        }
+
+        response = self.client.get(
+            "/oauth/twitch/callback",
+            {"state": state, "code": "code-1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(TwitchBroadcasterGrant.objects.count(), 1)
+        grant = TwitchBroadcasterGrant.objects.get(username="prvbutts")
+        self.assertEqual(grant.broadcaster_user_id, "42490016")
+
+    @override_settings(
+        TWITCH_CHANNELS=["prvbutts"],
+        TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
+    )
+    @patch("simpwatch.views._validate_twitch_access_token")
+    @patch("simpwatch.views._exchange_twitch_code_for_tokens")
+    def test_callback_rejects_tokens_when_login_not_watched_channel(
+        self,
+        mock_exchange,
+        mock_validate,
+    ):
+        state = "state-reject"
+        cache.set("twitch:onboard:state:state-reject", "1", 600)
+        mock_exchange.return_value = {
+            "access_token": "access-2",
+            "refresh_token": "refresh-2",
+            "expires_in": 3600,
+        }
+        mock_validate.return_value = {
+            "login": "someoneelse",
+            "user_id": "777",
+            "scopes": ["channel:bot"],
+        }
+
+        response = self.client.get(
+            "/oauth/twitch/callback",
+            {"state": state, "code": "code-2"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        payload = response.json()
+        self.assertEqual(payload["error"], "channel_not_configured")
+        self.assertEqual(TwitchBroadcasterGrant.objects.count(), 0)
+
+    @override_settings(
+        TWITCH_CHANNELS=["prvbutts"],
+        TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
+    )
+    @patch("simpwatch.views._validate_twitch_access_token")
+    @patch("simpwatch.views._exchange_twitch_code_for_tokens")
+    def test_callback_matches_watched_channel_case_insensitively(
+        self,
+        mock_exchange,
+        mock_validate,
+    ):
+        state = "state-case"
+        cache.set("twitch:onboard:state:state-case", "1", 600)
+        mock_exchange.return_value = {
+            "access_token": "access-3",
+            "refresh_token": "refresh-3",
+            "expires_in": 3600,
+        }
+        mock_validate.return_value = {
+            "login": "PrVBuTtS",
+            "user_id": "42490016",
+            "scopes": ["channel:bot"],
+        }
+
+        response = self.client.get(
+            "/oauth/twitch/callback",
+            {"state": state, "code": "code-3"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(TwitchBroadcasterGrant.objects.count(), 1)
+        grant = TwitchBroadcasterGrant.objects.get()
+        self.assertEqual(grant.username, "prvbutts")
+
+    def test_revoke_requires_staff_authentication(self):
+        grant = TwitchBroadcasterGrant.objects.create(
+            username="prvbutts",
+            broadcaster_user_id="42490016",
+            access_token="a",
+            refresh_token="r",
+            scopes="channel:bot",
+            is_active=True,
+        )
+        response = self.client.post("/oauth/twitch/revoke", {"username": "prvbutts"})
+        self.assertEqual(response.status_code, 403)
+        grant.refresh_from_db()
+        self.assertTrue(grant.is_active)
+
+    def test_revoke_deactivates_grant_for_staff_user(self):
+        grant = TwitchBroadcasterGrant.objects.create(
+            username="prvbutts",
+            broadcaster_user_id="42490016",
+            access_token="a",
+            refresh_token="r",
+            scopes="channel:bot",
+            is_active=True,
+        )
+        staff = get_user_model().objects.create_user(
+            username="admin",
+            email="admin@example.com",
+            password="pw",
+            is_staff=True,
+        )
+        self.client.force_login(staff)
+        response = self.client.post("/oauth/twitch/revoke", {"username": "prvbutts"})
+        self.assertEqual(response.status_code, 200)
+        grant.refresh_from_db()
+        self.assertFalse(grant.is_active)

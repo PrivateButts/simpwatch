@@ -168,6 +168,9 @@ env:
   TWITCH_WATCHDOG_TIMEOUT: "300"
   TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS: "3"
   TWITCH_DB_TIMEOUT: "10"
+  TWITCH_TOKEN_REDIRECT_URI: "https://simpwatch.local/oauth/twitch/callback"
+  TWITCH_ONBOARD_STATE_TTL_SECONDS: "600"
+  TWITCH_BROADCASTER_TOKEN_SCOPES: "channel:bot"
 
 # Secrets (created in Rancher UI)
 # Reference secret name: simpwatch-secrets
@@ -177,11 +180,14 @@ env:
 #   - postgres-password (POSTGRES_PASSWORD)
 #   - postgres-db (POSTGRES_DB)
 #   - twitch-bot-username (TWITCH_BOT_USERNAME)
+#   - twitch-client-id (TWITCH_CLIENT_ID)
 #   - twitch-client-secret (TWITCH_CLIENT_SECRET)
 #   - twitch-bot-id (TWITCH_BOT_ID)
 #   - twitch-bot-access-token (TWITCH_BOT_ACCESS_TOKEN)
 #   - twitch-bot-refresh-token (TWITCH_BOT_REFRESH_TOKEN)
 #   - twitch-channels (TWITCH_CHANNELS)
+#   - twitch-reply-channels (TWITCH_REPLY_CHANNELS)
+#   - twitch-grant-encryption-key (TWITCH_GRANT_ENCRYPTION_KEY)
 #   - discord-bot-token (DISCORD_BOT_TOKEN)
 #   - discord-guild-id (DISCORD_GUILD_ID)
 secretName: simpwatch-secrets

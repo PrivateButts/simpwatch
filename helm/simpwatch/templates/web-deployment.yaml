@@ -60,6 +60,36 @@ spec:
           value: "5432"
         - name: DATABASE_URL
           value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+        - name: TWITCH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: twitch-client-id
+        - name: TWITCH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: twitch-client-secret
+        - name: TWITCH_BOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: twitch-bot-username
+        - name: TWITCH_CHANNELS
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: twitch-channels
+        - name: TWITCH_OAUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: twitch-bot-access-token
+        - name: TWITCH_GRANT_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secretName }}
+              key: twitch-grant-encryption-key
         resources:
           {{- toYaml .Values.web.resources | nindent 12 }}
         {{- if .Values.web.healthcheck.enabled }}

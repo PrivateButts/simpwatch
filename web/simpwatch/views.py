@@ -1,9 +1,15 @@
 import json
 import logging
+import hashlib
+import secrets
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import base64
 from datetime import timedelta
+from datetime import datetime
+from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.core.cache import cache
@@ -11,8 +17,11 @@ from django.db.models import Count
 from django.db.models import Sum
 from django.http import JsonResponse
 from django.http import HttpResponse
+from django.views.decorators.http import require_POST
+from django.shortcuts import redirect
 from django.shortcuts import render
 from django.utils import timezone
+from cryptography.fernet import Fernet
 
 from .metrics import (
     http_request_duration_seconds,
@@ -20,10 +29,15 @@ from .metrics import (
     leaderboard_cache_total,
     prometheus_payload,
 )
-from .models import Person, ScoreAdjustment, SimpEvent
+from .models import Person, ScoreAdjustment, SimpEvent, TwitchBroadcasterGrant
 from .scoring import current_leaderboard_cache_version
 
 logger = logging.getLogger(__name__)
+
+TWITCH_AUTHORIZE_URL = "https://id.twitch.tv/oauth2/authorize"
+TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
+TWITCH_VALIDATE_URL = "https://id.twitch.tv/oauth2/validate"
+TWITCH_ONBOARD_STATE_CACHE_PREFIX = "twitch:onboard:state:"
 
 
 WINDOWS = {
@@ -152,6 +166,49 @@ def _watched_channels() -> list[str]:
     return list(getattr(settings, "TWITCH_CHANNELS", []))
 
 
+def _normalized_watched_channels() -> set[str]:
+    return {channel.strip().lower() for channel in _watched_channels() if channel.strip()}
+
+
+def _exchange_twitch_code_for_tokens(code: str) -> dict:
+    body = urllib.parse.urlencode(
+        {
+            "client_id": getattr(settings, "TWITCH_CLIENT_ID", ""),
+            "client_secret": getattr(settings, "TWITCH_CLIENT_SECRET", ""),
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", ""),
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(TWITCH_TOKEN_URL, data=body, method="POST")
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read())
+
+
+def _validate_twitch_access_token(access_token: str) -> dict:
+    request = urllib.request.Request(
+        TWITCH_VALIDATE_URL,
+        headers={"Authorization": f"OAuth {access_token}"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read())
+
+
+def _token_cipher() -> Fernet:
+    raw_key = (
+        getattr(settings, "TWITCH_GRANT_ENCRYPTION_KEY", "").strip()
+        or settings.SECRET_KEY
+    )
+    digest = hashlib.sha256(raw_key.encode("utf-8")).digest()
+    fernet_key = base64.urlsafe_b64encode(digest)
+    return Fernet(fernet_key)
+
+
+def _encrypt_token(plain_text: str) -> str:
+    return _token_cipher().encrypt(plain_text.encode("utf-8")).decode("utf-8")
+
+
 _TWITCH_CHANNEL_CACHE_KEY = "twitch_channel_data"
 _TWITCH_CHANNEL_CACHE_TTL = 60  # seconds
 
@@ -265,6 +322,163 @@ def healthcheck(request):
 def metrics_view(request):
     payload, content_type = prometheus_payload()
     return HttpResponse(payload, content_type=content_type)
+
+
+def twitch_onboard_start(request):
+    client_id = getattr(settings, "TWITCH_CLIENT_ID", "").strip()
+    redirect_uri = getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", "").strip()
+    scopes = getattr(settings, "TWITCH_BROADCASTER_TOKEN_SCOPES", "channel:bot")
+    if not client_id or not redirect_uri:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "missing_config",
+                "detail": "TWITCH_CLIENT_ID and TWITCH_TOKEN_REDIRECT_URI are required.",
+            },
+            status=500,
+        )
+
+    state = secrets.token_urlsafe(24)
+    ttl = max(int(getattr(settings, "TWITCH_ONBOARD_STATE_TTL_SECONDS", 600)), 60)
+    cache.set(f"{TWITCH_ONBOARD_STATE_CACHE_PREFIX}{state}", "1", ttl)
+
+    params = urllib.parse.urlencode(
+        {
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": scopes,
+            "state": state,
+            "force_verify": "true",
+        }
+    )
+    return redirect(f"{TWITCH_AUTHORIZE_URL}?{params}")
+
+
+def twitch_onboard_callback(request):
+    error = request.GET.get("error", "").strip()
+    if error:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "oauth_denied",
+                "detail": request.GET.get("error_description", "authorization denied"),
+            },
+            status=400,
+        )
+
+    state = request.GET.get("state", "").strip()
+    code = request.GET.get("code", "").strip()
+    if not state or not code:
+        return JsonResponse(
+            {"ok": False, "error": "invalid_callback", "detail": "Missing state or code."},
+            status=400,
+        )
+
+    state_cache_key = f"{TWITCH_ONBOARD_STATE_CACHE_PREFIX}{state}"
+    if not cache.get(state_cache_key):
+        return JsonResponse(
+            {"ok": False, "error": "invalid_state", "detail": "OAuth state is invalid or expired."},
+            status=400,
+        )
+    cache.delete(state_cache_key)
+
+    try:
+        token_data = _exchange_twitch_code_for_tokens(code)
+    except Exception:
+        logger.exception("Failed exchanging Twitch OAuth code for tokens")
+        return JsonResponse(
+            {"ok": False, "error": "token_exchange_failed", "detail": "Unable to exchange OAuth code."},
+            status=502,
+        )
+
+    access_token = str(token_data.get("access_token", "")).strip()
+    refresh_token = str(token_data.get("refresh_token", "")).strip()
+    if not access_token or not refresh_token:
+        return JsonResponse(
+            {"ok": False, "error": "token_exchange_failed", "detail": "Missing access or refresh token."},
+            status=502,
+        )
+
+    try:
+        validation = _validate_twitch_access_token(access_token)
+    except Exception:
+        logger.exception("Failed validating Twitch OAuth token")
+        return JsonResponse(
+            {"ok": False, "error": "token_validation_failed", "detail": "Unable to validate access token."},
+            status=502,
+        )
+
+    login = str(validation.get("login", "")).strip().lower()
+    user_id = str(validation.get("user_id", "")).strip()
+    scopes = validation.get("scopes", []) or []
+    if not login or not user_id:
+        return JsonResponse(
+            {"ok": False, "error": "token_validation_failed", "detail": "Validation response missing user identity."},
+            status=502,
+        )
+
+    if login not in _normalized_watched_channels():
+        logger.info(
+            "Rejected onboarding token for unconfigured channel login=%s",
+            login,
+        )
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "channel_not_configured",
+                "detail": "Broadcaster login is not listed in TWITCH_CHANNELS.",
+                "login": login,
+            },
+            status=403,
+        )
+
+    expires_in = int(token_data.get("expires_in") or 0)
+    expires_at = None
+    if expires_in > 0:
+        expires_at = datetime.now(dt_timezone.utc) + timedelta(seconds=expires_in)
+
+    TwitchBroadcasterGrant.objects.update_or_create(
+        username=login,
+        defaults={
+            "broadcaster_user_id": user_id,
+            "access_token": _encrypt_token(access_token),
+            "refresh_token": _encrypt_token(refresh_token),
+            "scopes": " ".join(scopes),
+            "expires_at": expires_at,
+            "is_active": True,
+        },
+    )
+
+    return JsonResponse({"ok": True, "login": login, "stored": True})
+
+
+@require_POST
+def twitch_onboard_revoke(request):
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated or not user.is_staff:
+        return JsonResponse(
+            {"ok": False, "error": "forbidden", "detail": "Staff authentication required."},
+            status=403,
+        )
+
+    username = (request.POST.get("username") or "").strip().lower()
+    if not username:
+        return JsonResponse(
+            {"ok": False, "error": "invalid_request", "detail": "username is required."},
+            status=400,
+        )
+
+    updated = TwitchBroadcasterGrant.objects.filter(username=username).update(
+        is_active=False,
+    )
+    if not updated:
+        return JsonResponse(
+            {"ok": False, "error": "not_found", "detail": "No broadcaster grant found."},
+            status=404,
+        )
+
+    return JsonResponse({"ok": True, "revoked": True, "username": username})
 
 
 def leaderboard_page(request):

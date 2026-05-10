@@ -7,6 +7,7 @@ import time
 from twitchio.ext import commands
 from twitchio import errors as twitch_errors
 from asgiref.sync import sync_to_async
+from prometheus_client import start_http_server
 
 from services.common_setup import setup_django
 from services.twitch_bot.healthcheck import clear_heartbeat, mark_healthy
@@ -35,6 +36,8 @@ _DB_OPERATION_TIMEOUT_SECONDS = int(os.getenv("TWITCH_DB_TIMEOUT", "10"))
 _WATCHDOG_MAX_RECONNECT_ATTEMPTS = int(
     os.getenv("TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS", "3")
 )
+_METRICS_ENABLED = os.getenv("TWITCH_METRICS_ENABLED", "true").lower() == "true"
+_METRICS_PORT = int(os.getenv("TWITCH_METRICS_PORT", "9090"))
 
 from simpwatch.models import Identity, SimpEvent  # noqa: E402
 
@@ -43,6 +46,15 @@ from simpwatch.command_parsing import (  # noqa: E402
     parse_bot_mention_command,
     parse_twitch_bamder_reason,
     parse_twitch_reason,
+)
+from simpwatch.metrics import (  # noqa: E402
+    twitch_commands_total,
+    twitch_cooldowns_total,
+    twitch_errors_total,
+    twitch_events_registered_total,
+    twitch_irc_idle_seconds,
+    twitch_messages_total,
+    twitch_watchdog_reconnect_attempts,
 )
 from simpwatch.scoring import (  # noqa: E402
     IdentityInput,
@@ -67,6 +79,7 @@ async def _db_call(coro_func, *args, **kwargs):
         return result
     except asyncio.TimeoutError:
         _stats["errors"] += 1
+        twitch_errors_total.labels("db_timeout").inc()
         logger.error(
             "Database operation timed out after %ds: %s",
             _DB_OPERATION_TIMEOUT_SECONDS,
@@ -75,6 +88,7 @@ async def _db_call(coro_func, *args, **kwargs):
         raise
     except Exception as e:
         _stats["errors"] += 1
+        twitch_errors_total.labels("db_exception").inc()
         logger.exception("Database operation failed in %s", coro_func.__name__)
         raise
 
@@ -119,6 +133,7 @@ class TwitchSimpBot(commands.Bot):
         self._last_message_at = time.monotonic()
         self._last_irc_at = time.monotonic()
         self._watchdog_reconnect_attempts = 0
+        twitch_watchdog_reconnect_attempts.set(0)
         self._start_background_tasks()
 
     async def event_raw_data(self, _data: str) -> None:
@@ -131,6 +146,7 @@ class TwitchSimpBot(commands.Bot):
 
     async def event_error(self, error: Exception, data: str | None = None) -> None:
         _stats["errors"] += 1
+        twitch_errors_total.labels("event_error").inc()
         logger.exception(
             "TwitchIO event error data=%r",
             data[:200] if data else None,
@@ -169,8 +185,12 @@ class TwitchSimpBot(commands.Bot):
             while True:
                 await asyncio.sleep(60)
                 idle_seconds = time.monotonic() - self._last_irc_at
+                twitch_irc_idle_seconds.set(idle_seconds)
                 if idle_seconds > _WATCHDOG_TIMEOUT_SECONDS:
                     self._watchdog_reconnect_attempts += 1
+                    twitch_watchdog_reconnect_attempts.set(
+                        self._watchdog_reconnect_attempts
+                    )
                     channels = [c.name for c in self.connected_channels]
                     logger.warning(
                         "Watchdog: no IRC activity for %.0fs (threshold %ds), "
@@ -184,8 +204,10 @@ class TwitchSimpBot(commands.Bot):
                     try:
                         await asyncio.wait_for(self.close(), timeout=5)
                     except asyncio.TimeoutError:
+                        twitch_errors_total.labels("watchdog_close_timeout").inc()
                         logger.error("Failed to close bot connection (timeout)")
                     except Exception:
+                        twitch_errors_total.labels("watchdog_close_exception").inc()
                         logger.exception("Error closing bot connection")
 
                     if (
@@ -233,6 +255,8 @@ class TwitchSimpBot(commands.Bot):
         self._last_message_at = time.monotonic()
         self._last_irc_at = time.monotonic()
         self._watchdog_reconnect_attempts = 0
+        twitch_messages_total.inc()
+        twitch_watchdog_reconnect_attempts.set(0)
         _stats["messages_seen"] += 1
         content = (message.content or "").strip()
 
@@ -247,6 +271,7 @@ class TwitchSimpBot(commands.Bot):
             await self._process_message(message, content)
         except Exception:
             _stats["errors"] += 1
+            twitch_errors_total.labels("event_message_exception").inc()
             logger.exception(
                 "Unhandled error processing message channel=%s author=%s content=%r",
                 getattr(message.channel, "name", "?"),
@@ -259,9 +284,11 @@ class TwitchSimpBot(commands.Bot):
         if bot_cmd is not None:
             _stats["commands_seen"] += 1
             command, args = bot_cmd
+            twitch_commands_total.labels(command).inc()
             try:
                 await self._handle_bot_command(message, command, args)
             except asyncio.TimeoutError:
+                twitch_errors_total.labels("bot_command_timeout").inc()
                 logger.error("Database timeout handling bot command")
             return
 
@@ -270,6 +297,10 @@ class TwitchSimpBot(commands.Bot):
             return
 
         _stats["commands_seen"] += 1
+        if lowered.startswith("!bamder"):
+            twitch_commands_total.labels("bamder").inc()
+        else:
+            twitch_commands_total.labels("simp").inc()
 
         actor_input = IdentityInput(
             platform=Identity.Platform.TWITCH,
@@ -311,6 +342,7 @@ class TwitchSimpBot(commands.Bot):
             )
             if event:
                 _stats["events_registered"] += 1
+                twitch_events_registered_total.labels(event_type).inc()
                 logger.info(
                     "event registered platform=twitch type=%s actor=%s target=%s "
                     "channel=%s event_id=%d points=%d",
@@ -343,6 +375,10 @@ class TwitchSimpBot(commands.Bot):
                             )
             else:
                 _stats["cooldowns"] += 1
+                if lowered.startswith("!bamder"):
+                    twitch_cooldowns_total.labels("bamder").inc()
+                else:
+                    twitch_cooldowns_total.labels("simp").inc()
                 logger.debug(
                     "cooldown active type=%s actor=%s target=%s channel=%s",
                     event_type,
@@ -351,6 +387,7 @@ class TwitchSimpBot(commands.Bot):
                     message.channel.name,
                 )
         except asyncio.TimeoutError:
+            twitch_errors_total.labels("process_message_timeout").inc()
             logger.error(
                 "Database timeout processing message from %s in channel %s",
                 actor_input.username,
@@ -425,6 +462,7 @@ class TwitchSimpBot(commands.Bot):
                 )
                 if event:
                     _stats["events_registered"] += 1
+                    twitch_events_registered_total.labels("simp").inc()
                     logger.info(
                         "event registered platform=twitch type=simp actor=%s target=%s "
                         "channel=%s event_id=%d points=%d",
@@ -441,6 +479,7 @@ class TwitchSimpBot(commands.Bot):
                         )
                 else:
                     _stats["cooldowns"] += 1
+                    twitch_cooldowns_total.labels("simp").inc()
                     logger.debug(
                         "cooldown active type=simp actor=%s target=%s channel=%s",
                         message.author.name,
@@ -448,6 +487,7 @@ class TwitchSimpBot(commands.Bot):
                         message.channel.name,
                     )
         except asyncio.TimeoutError:
+            twitch_errors_total.labels("bot_command_timeout").inc()
             logger.error("Database timeout in bot command: %s", command)
 
 
@@ -457,6 +497,10 @@ if __name__ == "__main__":
         stream=sys.stdout,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+
+    if _METRICS_ENABLED:
+        start_http_server(_METRICS_PORT)
+        logger.info("Twitch metrics exporter listening on port %d", _METRICS_PORT)
 
     clear_heartbeat()
     token = os.getenv("TWITCH_OAUTH_TOKEN", "").strip()

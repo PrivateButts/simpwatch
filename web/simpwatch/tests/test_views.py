@@ -169,3 +169,18 @@ class HealthcheckViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+
+class MetricsViewTests(TestCase):
+    def test_metrics_endpoint_returns_prometheus_content(self):
+        self.client.get("/healthz")
+        self.client.get("/api/leaderboard", {"window": "all"})
+
+        response = self.client.get("/metrics")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/plain", response["Content-Type"])
+        body = response.content.decode()
+        self.assertIn("simpwatch_http_requests_total", body)
+        self.assertIn("simpwatch_http_request_duration_seconds", body)
+        self.assertIn("simpwatch_leaderboard_cache_total", body)

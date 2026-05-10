@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from datetime import timedelta
@@ -9,9 +10,16 @@ from django.core.cache import cache
 from django.db.models import Count
 from django.db.models import Sum
 from django.http import JsonResponse
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 
+from .metrics import (
+    http_request_duration_seconds,
+    http_requests_total,
+    leaderboard_cache_total,
+    prometheus_payload,
+)
 from .models import Person, ScoreAdjustment, SimpEvent
 from .scoring import current_leaderboard_cache_version
 
@@ -245,16 +253,29 @@ def _watched_channels_enriched() -> list[dict]:
 
 
 def healthcheck(request):
-    return JsonResponse({"status": "ok"})
+    started = time.monotonic()
+    response = JsonResponse({"status": "ok"})
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "healthcheck"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(request.method, endpoint, "2xx").inc()
+    return response
+
+
+def metrics_view(request):
+    payload, content_type = prometheus_payload()
+    return HttpResponse(payload, content_type=content_type)
 
 
 def leaderboard_page(request):
+    started = time.monotonic()
     window = request.GET.get("window", "all")
     if window not in WINDOWS:
         window = "all"
     key = _cache_key("page", window)
     context = cache.get(key)
     if context is None:
+        leaderboard_cache_total.labels("page", "miss").inc()
         channels = _watched_channels_enriched()
         context = {
             "window": window,
@@ -272,16 +293,25 @@ def leaderboard_page(request):
             "discord_configured": bool(getattr(settings, "DISCORD_BOT_TOKEN", "")),
         }
         cache.set(key, context, _cache_ttl())
-    return render(request, "simpwatch/leaderboard.html", context)
+    else:
+        leaderboard_cache_total.labels("page", "hit").inc()
+    response = render(request, "simpwatch/leaderboard.html", context)
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "leaderboard_page"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(request.method, endpoint, "2xx").inc()
+    return response
 
 
 def leaderboard_api(request):
+    started = time.monotonic()
     window = request.GET.get("window", "all")
     if window not in WINDOWS:
         window = "all"
     key = _cache_key("api", window)
     payload = cache.get(key)
     if payload is None:
+        leaderboard_cache_total.labels("api", "miss").inc()
         rows = _leaderboard_rows(window)
         narc_rows = _narc_rows(window)
         bamder_total = _bamder_total(window)
@@ -332,4 +362,11 @@ def leaderboard_api(request):
             ],
         }
         cache.set(key, payload, _cache_ttl())
-    return JsonResponse(payload)
+    else:
+        leaderboard_cache_total.labels("api", "hit").inc()
+    response = JsonResponse(payload)
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "leaderboard_api"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(request.method, endpoint, "2xx").inc()
+    return response

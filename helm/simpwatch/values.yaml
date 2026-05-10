@@ -23,6 +23,9 @@ web:
     type: ClusterIP
     port: 8000
     targetPort: 8000
+  metrics:
+    enabled: true
+    path: /metrics
   resources:
     requests:
       cpu: 100m
@@ -58,6 +61,13 @@ twitchBot:
     periodSeconds: 30
     timeoutSeconds: 5
     failureThreshold: 3
+  metrics:
+    enabled: true
+    port: 9090
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 9090
 
 # Discord bot worker
 discordBot:
@@ -204,3 +214,9 @@ tolerations: []
 
 # Affinity rules (optional)
 affinity: {}
+
+# Prometheus scrape annotations for external Prometheus discovery.
+prometheus:
+  scrape:
+    enabled: true
+    interval: 15s

@@ -5,6 +5,7 @@ SimpWatch tracks `!simp` callouts from Twitch and `/simp` calls from Discord, th
 ## Features
 
 - Public leaderboard page with windows: `24h`, `7d`, `30d`, `all`
+- Prometheus metrics endpoints for web and Twitch worker
 - Auto dark mode using system preference (`prefers-color-scheme`)
 - Narc leaderboard (callout count by caller)
 - Twitch command parsing:
@@ -79,8 +80,31 @@ docker compose exec web python manage.py createsuperuser
 - `DJANGO_CSRF_TRUSTED_ORIGINS`: empty by default
 - `DJANGO_TRUST_X_FORWARDED_PROTO`: `False` by default
 - `DJANGO_USE_X_FORWARDED_HOST`: `False` by default
+- `TWITCH_METRICS_ENABLED`: default `true`
+- `TWITCH_METRICS_PORT`: default `9090`
 
 Set cooldown later in admin via `ScoringConfig` without code changes.
+
+## Prometheus Metrics
+
+SimpWatch exposes metrics in Prometheus text format:
+
+- Web app: `GET /metrics` on the web service port (`8000` by default)
+- Twitch bot: `GET /metrics` on `TWITCH_METRICS_PORT` (`9090` by default)
+
+When deploying with Helm, both web and Twitch services can include Prometheus
+scrape annotations by enabling:
+
+- `prometheus.scrape.enabled=true`
+
+Useful Helm values:
+
+- `web.metrics.enabled`
+- `web.metrics.path`
+- `twitchBot.metrics.enabled`
+- `twitchBot.metrics.port`
+- `twitchBot.metrics.service.enabled`
+- `prometheus.scrape.interval`
 
 ## Bot Setup
 

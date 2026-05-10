@@ -13,6 +13,13 @@ twitchBot:
   replicaCount: 1
   image:
     tag: "v1.0.0"
+  metrics:
+    enabled: true
+    port: 9090
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 9090
 
 discordBot:
   replicaCount: 1
@@ -78,6 +85,11 @@ env:
   TWITCH_WATCHDOG_TIMEOUT: "300"
   TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS: "3"
   TWITCH_DB_TIMEOUT: "10"
+
+prometheus:
+  scrape:
+    enabled: true
+    interval: 15s
 
 # Pod disruption budget for zero-downtime deployments
 podDisruptionBudget:

@@ -18,5 +18,7 @@ data:
   TWITCH_WATCHDOG_TIMEOUT: {{ .Values.env.TWITCH_WATCHDOG_TIMEOUT | quote }}
   TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS: {{ .Values.env.TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS | quote }}
   TWITCH_DB_TIMEOUT: {{ .Values.env.TWITCH_DB_TIMEOUT | quote }}
+  TWITCH_METRICS_ENABLED: {{ ternary "true" "false" .Values.twitchBot.metrics.enabled | quote }}
+  TWITCH_METRICS_PORT: {{ .Values.twitchBot.metrics.port | quote }}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"

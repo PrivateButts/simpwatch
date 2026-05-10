@@ -1,0 +1,28 @@
+{{- if and .Values.twitchBot.enabled .Values.twitchBot.metrics.enabled .Values.twitchBot.metrics.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "simpwatch.fullname" . }}-twitch-bot
+  namespace: {{ .Values.namespace }}
+  {{- if .Values.prometheus.scrape.enabled }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: {{ .Values.twitchBot.metrics.service.port | quote }}
+    prometheus.io/scheme: "http"
+    prometheus.io/interval: {{ .Values.prometheus.scrape.interval | quote }}
+  {{- end }}
+  labels:
+    {{- include "simpwatch.labels" . | nindent 4 }}
+    app: twitch-bot
+spec:
+  type: {{ .Values.twitchBot.metrics.service.type }}
+  ports:
+    - port: {{ .Values.twitchBot.metrics.service.port }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "simpwatch.selectorLabels" . | nindent 4 }}
+    app: twitch-bot
+{{- end }}

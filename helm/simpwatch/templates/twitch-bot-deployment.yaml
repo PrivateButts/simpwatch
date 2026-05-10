@@ -26,6 +26,12 @@ spec:
       - name: twitch-bot
         image: "{{ .Values.image.registry }}/{{ .Values.twitchBot.image.repository }}:{{ .Values.twitchBot.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- if .Values.twitchBot.metrics.enabled }}
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.twitchBot.metrics.port }}
+          protocol: TCP
+        {{- end }}
         envFrom:
         - configMapRef:
             name: {{ include "simpwatch.fullname" . }}-config

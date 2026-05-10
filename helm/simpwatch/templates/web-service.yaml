@@ -4,6 +4,14 @@ kind: Service
 metadata:
   name: {{ include "simpwatch.fullname" . }}-web
   namespace: {{ .Values.namespace }}
+  {{- if and .Values.prometheus.scrape.enabled .Values.web.metrics.enabled }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: {{ .Values.web.metrics.path | quote }}
+    prometheus.io/port: {{ .Values.web.service.port | quote }}
+    prometheus.io/scheme: "http"
+    prometheus.io/interval: {{ .Values.prometheus.scrape.interval | quote }}
+  {{- end }}
   labels:
     {{- include "simpwatch.labels" . | nindent 4 }}
     app: web

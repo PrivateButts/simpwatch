@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+import re
 import sys
 import time
 from types import SimpleNamespace
@@ -23,6 +24,22 @@ if not _HAS_SERVICES_PACKAGE:
     raise unittest.SkipTest("services package unavailable in this test runtime")
 
 from services.twitch_bot.main import TwitchSimpBot, _stats
+from simpwatch.metrics import prometheus_payload
+
+
+def _counter_value(name: str, labels: dict[str, str] | None = None) -> float:
+    payload, _ = prometheus_payload()
+    text = payload.decode()
+    label_text = ""
+    if labels:
+        label_text = "{" + ",".join(
+            f'{key}="{value}"' for key, value in sorted(labels.items())
+        ) + "}"
+    pattern = rf"^{re.escape(name)}{re.escape(label_text)}\s+([0-9eE+\-.]+)$"
+    match = re.search(pattern, text, flags=re.MULTILINE)
+    if not match:
+        return 0.0
+    return float(match.group(1))
 
 
 def _make_bot(
@@ -456,3 +473,44 @@ class WatchdogTests(SimpleTestCase):
                 pass
 
         bot.close.assert_not_awaited()
+
+
+class PrometheusMetricsTests(SimpleTestCase):
+    def setUp(self) -> None:
+        for key in _stats:
+            _stats[key] = 0
+
+    async def test_event_message_increments_twitch_messages_metric(self):
+        bot = _make_bot()
+        msg = _message("hello world")
+        before = _counter_value("simpwatch_twitch_messages_total")
+
+        await bot.event_message(msg)
+
+        after = _counter_value("simpwatch_twitch_messages_total")
+        self.assertEqual(after - before, 1.0)
+
+    async def test_simp_command_increments_command_metric(self):
+        bot = _make_bot()
+        msg = _message("!simp", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(id=1, points=1)
+        before = _counter_value(
+            "simpwatch_twitch_commands_total",
+            labels={"command": "simp"},
+        )
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        after = _counter_value(
+            "simpwatch_twitch_commands_total",
+            labels={"command": "simp"},
+        )
+        self.assertEqual(after - before, 1.0)

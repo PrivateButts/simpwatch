@@ -114,6 +114,8 @@ spec:
               value: "False"
             - name: DJANGO_ALLOWED_HOSTS
               value: "simpwatch.k3s.local"
+            - name: DJANGO_CSRF_TRUSTED_ORIGINS
+              value: "https://simpwatch.k3s.local,https://simplympics.thedumpster.party"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

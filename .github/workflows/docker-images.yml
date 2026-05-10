@@ -127,16 +127,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compute SHA short tag
+      - name: Compute SHA short tag and lowercase image namespace
         id: sha
-        run: echo "SHORT=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        run: |
+          echo "SHORT=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Update deploy manifests with SHA tag
         run: |
           SHORT="${{ steps.sha.outputs.SHORT }}"
-          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-web:[^\"]\+|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-web:sha-${SHORT}|g" deploy/deployments.yaml
-          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-twitch:[^\"]\+|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-twitch:sha-${SHORT}|g" deploy/deployments.yaml
-          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-discord:[^\"]\+|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-discord:sha-${SHORT}|g" deploy/deployments.yaml
+          NS_LC="${{ steps.sha.outputs.OWNER_LC }}"
+          sed -i "s|image: ${{ env.REGISTRY }}/${NS_LC}/simpwatch-web:[^\"]\+|image: ${{ env.REGISTRY }}/${NS_LC}/simpwatch-web:sha-${SHORT}|g" deploy/deployments.yaml
+          sed -i "s|image: ${{ env.REGISTRY }}/${NS_LC}/simpwatch-bot-twitch:[^\"]\+|image: ${{ env.REGISTRY }}/${NS_LC}/simpwatch-bot-twitch:sha-${SHORT}|g" deploy/deployments.yaml
+          sed -i "s|image: ${{ env.REGISTRY }}/${NS_LC}/simpwatch-bot-discord:[^\"]\+|image: ${{ env.REGISTRY }}/${NS_LC}/simpwatch-bot-discord:sha-${SHORT}|g" deploy/deployments.yaml
 
       - name: Commit and push manifest updates
         run: |

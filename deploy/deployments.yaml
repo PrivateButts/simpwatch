@@ -149,10 +149,25 @@ spec:
                 secretKeyRef:
                   key: TWITCH_BOT_USERNAME
                   name: simpwatch-env
-            - name: TWITCH_OAUTH_TOKEN
+            - name: TWITCH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  key: TWITCH_OAUTH_TOKEN
+                  key: TWITCH_CLIENT_SECRET
+                  name: simpwatch-env
+            - name: TWITCH_BOT_ID
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_ID
+                  name: simpwatch-env
+            - name: TWITCH_BOT_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_ACCESS_TOKEN
+                  name: simpwatch-env
+            - name: TWITCH_BOT_REFRESH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_REFRESH_TOKEN
                   name: simpwatch-env
             - name: TWITCH_CHANNELS
               valueFrom:
@@ -234,10 +249,25 @@ spec:
                 secretKeyRef:
                   key: TWITCH_BOT_USERNAME
                   name: simpwatch-env
-            - name: TWITCH_OAUTH_TOKEN
+            - name: TWITCH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  key: TWITCH_OAUTH_TOKEN
+                  key: TWITCH_CLIENT_SECRET
+                  name: simpwatch-env
+            - name: TWITCH_BOT_ID
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_ID
+                  name: simpwatch-env
+            - name: TWITCH_BOT_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_ACCESS_TOKEN
+                  name: simpwatch-env
+            - name: TWITCH_BOT_REFRESH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_REFRESH_TOKEN
                   name: simpwatch-env
             - name: TWITCH_CHANNELS
               valueFrom:
@@ -339,10 +369,25 @@ spec:
                 secretKeyRef:
                   key: TWITCH_BOT_USERNAME
                   name: simpwatch-env
-            - name: TWITCH_OAUTH_TOKEN
+            - name: TWITCH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  key: TWITCH_OAUTH_TOKEN
+                  key: TWITCH_CLIENT_SECRET
+                  name: simpwatch-env
+            - name: TWITCH_BOT_ID
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_ID
+                  name: simpwatch-env
+            - name: TWITCH_BOT_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_ACCESS_TOKEN
+                  name: simpwatch-env
+            - name: TWITCH_BOT_REFRESH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_REFRESH_TOKEN
                   name: simpwatch-env
             - name: TWITCH_CHANNELS
               valueFrom:

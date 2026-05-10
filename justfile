@@ -81,6 +81,10 @@ test-bot:
     docker compose up --build -d bot_twitch
     docker compose exec bot_twitch sh -lc 'PYTHONPATH=/app python web/manage.py test simpwatch.tests.test_twitch_bot -v 2'
 
+# Run local Twitch OAuth helper (prints URL, does not auto-open browser)
+twitch-token:
+    uv run python services/twitch_bot/token_cli.py
+
 # ── Lint / syntax ─────────────────────────────────────────────────────────────
 
 # Compile-check all Python source (fast syntax validation, no Docker needed)

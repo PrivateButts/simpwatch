@@ -18,10 +18,17 @@ def clear_heartbeat() -> None:
 
 
 def main() -> int:
-    token = os.getenv("TWITCH_OAUTH_TOKEN", "").strip()
-    channels = os.getenv("TWITCH_CHANNELS", "").strip()
-    if not token or not channels:
-        print("missing TWITCH_OAUTH_TOKEN or TWITCH_CHANNELS", file=sys.stderr)
+    required = {
+        "TWITCH_CLIENT_ID": os.getenv("TWITCH_CLIENT_ID", "").strip(),
+        "TWITCH_CLIENT_SECRET": os.getenv("TWITCH_CLIENT_SECRET", "").strip(),
+        "TWITCH_BOT_ID": os.getenv("TWITCH_BOT_ID", "").strip(),
+        "TWITCH_BOT_ACCESS_TOKEN": os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip(),
+        "TWITCH_BOT_REFRESH_TOKEN": os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip(),
+        "TWITCH_CHANNELS": os.getenv("TWITCH_CHANNELS", "").strip(),
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        print(f"missing required env vars: {', '.join(missing)}", file=sys.stderr)
         return 1
 
     try:

@@ -14,15 +14,15 @@ authors = [
 license = { text = "MIT" }
 
 dependencies = [
-    "Django==5.1.6",
-    "gunicorn==23.0.0",
-    "psycopg[binary]==3.2.4",
-    "dj-database-url==2.3.0",
-    "django-redis==5.4.0",
-    "whitenoise==6.9.0",
-    "twitchio==2.10.0",
-    "discord.py==2.4.0",
-    "prometheus-client==0.22.1",
+    "Django==6.0.5",
+    "gunicorn==26.0.0",
+    "psycopg[binary]==3.3.4",
+    "dj-database-url==3.1.2",
+    "django-redis==6.0.0",
+    "whitenoise==6.12.0",
+    "twitchio @ git+https://github.com/TwitchIO/TwitchIO.git@main",
+    "discord.py==2.7.1",
+    "prometheus-client==0.25.0",
 ]
 
 [project.optional-dependencies]
@@ -47,3 +47,6 @@ addopts = "--cov=web/simpwatch --cov-report=term-missing"
 
 [tool.hatch.build.targets.wheel]
 packages = ["web/simpwatch"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

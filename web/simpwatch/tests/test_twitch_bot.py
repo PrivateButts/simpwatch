@@ -45,9 +45,18 @@ def _counter_value(name: str, labels: dict[str, str] | None = None) -> float:
 def _make_bot(
     nick: str = "simpbot", reply_channels: set[str] | None = None
 ) -> TwitchSimpBot:
-    with patch.dict(os.environ, {"TWITCH_BOT_USERNAME": nick}):
+    env = {
+        "TWITCH_BOT_USERNAME": nick,
+        "TWITCH_CLIENT_ID": "test-client-id",
+        "TWITCH_CLIENT_SECRET": "test-client-secret",
+        "TWITCH_BOT_ID": "test-bot-id",
+        "TWITCH_BOT_ACCESS_TOKEN": "test-access-token",
+        "TWITCH_BOT_REFRESH_TOKEN": "test-refresh-token",
+        "TWITCH_CHANNELS": "streamerchan",
+    }
+    with patch.dict(os.environ, env, clear=False):
         bot = TwitchSimpBot()
-    bot._connection.nick = nick
+    bot.nick = nick
     if reply_channels is not None:
         bot._reply_channels = reply_channels
     return bot

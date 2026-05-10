@@ -5,13 +5,17 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv
 RUN pip install --no-cache-dir uv
 
-# Copy project config and install dependencies
-COPY pyproject.toml uv.lock* /app/
-RUN uv sync --frozen --no-dev
-
 COPY . /app
+
+# Install locked runtime dependencies and expose the project venv on PATH.
+RUN rm -rf /app/.venv && uv sync --frozen --no-dev
+ENV PATH="/app/.venv/bin:${PATH}"
 
 EXPOSE 8000

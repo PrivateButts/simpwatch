@@ -17,5 +17,6 @@ services:
         condition: service_started
     volumes:
       - .:/workspaces/simpwatch:cached
+      - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /workspaces/simpwatch
     command: sleep infinity

@@ -52,7 +52,11 @@ cp .env.example .env
 
 - `DJANGO_SECRET_KEY`
 - `TWITCH_BOT_USERNAME`
-- `TWITCH_OAUTH_TOKEN`
+- `TWITCH_CLIENT_ID`
+- `TWITCH_CLIENT_SECRET`
+- `TWITCH_BOT_ID`
+- `TWITCH_BOT_ACCESS_TOKEN`
+- `TWITCH_BOT_REFRESH_TOKEN`
 - `TWITCH_CHANNELS` (comma-separated channel names)
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_GUILD_ID` (optional; if set, slash command syncs to one guild)
@@ -191,20 +195,24 @@ Useful Helm values:
 ### Twitch Bot
 
 1. Create a Twitch account for the bot (recommended, separate from your main account).
-2. Generate an OAuth token for that bot account with chat scopes (`chat:read` and `chat:edit`).
-   - The token should look like `oauth:...`.
-3. In `.env`, set:
-   - `TWITCH_BOT_USERNAME=<bot account username>`
-   - `TWITCH_OAUTH_TOKEN=<oauth token>`
-   - `TWITCH_CHANNELS=channel_one,channel_two`
-4. Restart only the Twitch worker:
+2. Create a Twitch application and note the `CLIENT_ID` and `CLIENT_SECRET`.
+3. Generate a refreshable user token pair for the bot account with chat scopes (`user:read:chat`, `user:write:chat`, `user:bot`).
+4. In `.env`, set:
+  - `TWITCH_BOT_USERNAME=<bot account username>`
+  - `TWITCH_CLIENT_ID=<twitch client id>`
+  - `TWITCH_CLIENT_SECRET=<twitch client secret>`
+  - `TWITCH_BOT_ID=<bot account user id>`
+  - `TWITCH_BOT_ACCESS_TOKEN=<access token>`
+  - `TWITCH_BOT_REFRESH_TOKEN=<refresh token>`
+  - `TWITCH_CHANNELS=channel_one,channel_two`
+5. Restart only the Twitch worker:
 
 ```bash
 docker compose up -d --build bot_twitch
 docker compose logs -f bot_twitch
 ```
 
-Expected log after successful auth: `Twitch bot ready: <name>`.
+Expected log after successful auth: `Twitch bot ready user=<name> channels=[...]`.
 The container now reports `healthy` only after the bot has connected and keeps
 refreshing its heartbeat; missing config, auth failures, or a stale/disconnected
 session will mark it `unhealthy`.
@@ -339,7 +347,11 @@ export SIMP_DEFAULT_POINTS='1'
 export SIMP_DEFAULT_COOLDOWN_SECONDS='0'
 
 export TWITCH_BOT_USERNAME='your-bot-name'
-export TWITCH_OAUTH_TOKEN='oauth:your-token'
+export TWITCH_CLIENT_ID='your-client-id'
+export TWITCH_CLIENT_SECRET='your-client-secret'
+export TWITCH_BOT_ID='your-bot-user-id'
+export TWITCH_BOT_ACCESS_TOKEN='your-access-token'
+export TWITCH_BOT_REFRESH_TOKEN='your-refresh-token'
 export TWITCH_CHANNELS='channel_one,channel_two'
 
 export DISCORD_BOT_TOKEN='your-discord-token'

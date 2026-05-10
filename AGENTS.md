@@ -142,7 +142,7 @@ If you add lint/type tools, document exact commands in this file.
 - Copy `.env.example` to `.env` for local runs.
 - Required runtime secrets include:
   - `DJANGO_SECRET_KEY`
-  - `TWITCH_OAUTH_TOKEN`, `TWITCH_BOT_USERNAME`, `TWITCH_CHANNELS` (comma-separated)
+  - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_BOT_ID`, `TWITCH_BOT_ACCESS_TOKEN`, `TWITCH_BOT_REFRESH_TOKEN`, `TWITCH_BOT_USERNAME`, `TWITCH_CHANNELS` (comma-separated)
   - `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`
 - Database is configured via `DATABASE_URL` or `POSTGRES_*` variables.
 - Cache requires Redis; configure via `CACHE_URL` (e.g. `redis://redis:6379/1`).

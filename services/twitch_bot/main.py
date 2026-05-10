@@ -31,6 +31,10 @@ _WATCHDOG_TIMEOUT_SECONDS = int(os.getenv("TWITCH_WATCHDOG_TIMEOUT", "300"))
 _STATS_INTERVAL_SECONDS = int(os.getenv("TWITCH_STATS_INTERVAL", "300"))
 # How long (seconds) to wait for database operations before timing out.
 _DB_OPERATION_TIMEOUT_SECONDS = int(os.getenv("TWITCH_DB_TIMEOUT", "10"))
+# How many reconnect attempts the watchdog should try before forcing process restart.
+_WATCHDOG_MAX_RECONNECT_ATTEMPTS = int(
+    os.getenv("TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS", "3")
+)
 
 from simpwatch.models import Identity, SimpEvent  # noqa: E402
 
@@ -95,6 +99,8 @@ class TwitchSimpBot(commands.Bot):
         self._watchdog_task: asyncio.Task[None] | None = None
         self._stats_task: asyncio.Task[None] | None = None
         self._last_message_at: float = time.monotonic()
+        self._last_irc_at: float = time.monotonic()
+        self._watchdog_reconnect_attempts: int = 0
         self._reply_channels: set[str] = {
             c.strip().lower()
             for c in os.getenv("TWITCH_REPLY_CHANNELS", "").split(",")
@@ -111,7 +117,13 @@ class TwitchSimpBot(commands.Bot):
         channels = [c.name for c in self.connected_channels]
         logger.info("Twitch bot ready nick=%s channels=%s", self.nick, channels)
         self._last_message_at = time.monotonic()
+        self._last_irc_at = time.monotonic()
+        self._watchdog_reconnect_attempts = 0
         self._start_background_tasks()
+
+    async def event_raw_data(self, _data: str) -> None:
+        # Any IRC traffic (including keepalives) indicates the connection is alive.
+        self._last_irc_at = time.monotonic()
 
     async def event_disconnect(self):
         logger.warning("Twitch bot disconnected")
@@ -156,24 +168,40 @@ class TwitchSimpBot(commands.Bot):
         try:
             while True:
                 await asyncio.sleep(60)
-                idle_seconds = time.monotonic() - self._last_message_at
+                idle_seconds = time.monotonic() - self._last_irc_at
                 if idle_seconds > _WATCHDOG_TIMEOUT_SECONDS:
+                    self._watchdog_reconnect_attempts += 1
+                    channels = [c.name for c in self.connected_channels]
                     logger.warning(
-                        "Watchdog: no messages for %.0fs (threshold %ds), "
-                        "forcing reconnect",
+                        "Watchdog: no IRC activity for %.0fs (threshold %ds), "
+                        "forcing reconnect attempt %d/%d channels=%s",
                         idle_seconds,
                         _WATCHDOG_TIMEOUT_SECONDS,
+                        self._watchdog_reconnect_attempts,
+                        _WATCHDOG_MAX_RECONNECT_ATTEMPTS,
+                        channels,
                     )
                     try:
                         await asyncio.wait_for(self.close(), timeout=5)
                     except asyncio.TimeoutError:
                         logger.error("Failed to close bot connection (timeout)")
-                        # Force exit by clearing heartbeat so health check fails
+                    except Exception:
+                        logger.exception("Error closing bot connection")
+
+                    if (
+                        self._watchdog_reconnect_attempts
+                        >= _WATCHDOG_MAX_RECONNECT_ATTEMPTS
+                    ):
+                        logger.error(
+                            "Watchdog reconnect attempts exhausted (%d), "
+                            "forcing process restart",
+                            self._watchdog_reconnect_attempts,
+                        )
                         clear_heartbeat()
-                    except Exception as e:
-                        logger.exception("Error closing bot connection: %s", e)
-                        clear_heartbeat()
-                    return
+                        os._exit(1)
+
+                    # Don't disable the watchdog after one failed reconnect attempt.
+                    self._last_irc_at = time.monotonic()
         except asyncio.CancelledError:
             raise
 
@@ -183,12 +211,15 @@ class TwitchSimpBot(commands.Bot):
                 await asyncio.sleep(_STATS_INTERVAL_SECONDS)
                 logger.info(
                     "stats messages_seen=%d commands_seen=%d "
-                    "events_registered=%d cooldowns=%d errors=%d",
+                    "events_registered=%d cooldowns=%d errors=%d "
+                    "irc_idle_seconds=%.0f watchdog_reconnect_attempts=%d",
                     _stats["messages_seen"],
                     _stats["commands_seen"],
                     _stats["events_registered"],
                     _stats["cooldowns"],
                     _stats["errors"],
+                    time.monotonic() - self._last_irc_at,
+                    self._watchdog_reconnect_attempts,
                 )
                 for key in _stats:
                     _stats[key] = 0
@@ -200,6 +231,8 @@ class TwitchSimpBot(commands.Bot):
             return
 
         self._last_message_at = time.monotonic()
+        self._last_irc_at = time.monotonic()
+        self._watchdog_reconnect_attempts = 0
         _stats["messages_seen"] += 1
         content = (message.content or "").strip()
 

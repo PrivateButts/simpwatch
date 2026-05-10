@@ -417,26 +417,35 @@ class WatchdogTests(SimpleTestCase):
     async def test_watchdog_forces_reconnect_after_idle_threshold(self):
         bot = _make_bot()
         bot.close = AsyncMock()
-        bot._last_message_at = time.monotonic() - 1000
-
-        with patch(
-            "services.twitch_bot.main.asyncio.sleep", AsyncMock(return_value=None)
-        ):
-            await bot._watchdog_loop()
-
-        bot.close.assert_awaited_once()
-
-    async def test_watchdog_does_not_reconnect_when_recently_active(self):
-        bot = _make_bot()
-        bot.close = AsyncMock()
-        bot._last_message_at = time.monotonic()
+        bot._last_irc_at = time.monotonic() - 1000
 
         sleep_calls = 0
 
         async def limited_sleep(_delay):
             nonlocal sleep_calls
             sleep_calls += 1
-            # Update last message to simulate ongoing activity, then stop after one cycle
+            if sleep_calls >= 2:
+                raise asyncio.CancelledError
+
+        with patch("services.twitch_bot.main.asyncio.sleep", limited_sleep):
+            with self.assertRaises(asyncio.CancelledError):
+                await bot._watchdog_loop()
+
+        bot.close.assert_awaited_once()
+
+    async def test_watchdog_does_not_reconnect_when_recently_active(self):
+        bot = _make_bot()
+        bot.close = AsyncMock()
+        bot._last_irc_at = time.monotonic()
+
+        sleep_calls = 0
+
+        async def limited_sleep(_delay):
+            nonlocal sleep_calls
+            sleep_calls += 1
+            # Update IRC timestamp to simulate ongoing keepalive activity,
+            # then stop after one cycle.
+            bot._last_irc_at = time.monotonic()
             if sleep_calls >= 2:
                 raise asyncio.CancelledError
 

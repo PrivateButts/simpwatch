@@ -74,6 +74,10 @@ env:
   DJANGO_USE_X_FORWARDED_HOST: "True"
   CACHE_URL: "redis://redis:6379/1"
   LEADERBOARD_CACHE_TTL_SECONDS: "15"
+  TWITCH_STATS_INTERVAL: "300"
+  TWITCH_WATCHDOG_TIMEOUT: "300"
+  TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS: "3"
+  TWITCH_DB_TIMEOUT: "10"
 
 # Pod disruption budget for zero-downtime deployments
 podDisruptionBudget:

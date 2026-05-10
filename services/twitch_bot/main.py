@@ -238,13 +238,25 @@ class TwitchSimpBot(commands.Bot):
         logger.error("TwitchIO event error original=%r error=%r", original, error)
 
     async def _send_message(self, message, content: str) -> None:
-        channel = getattr(message, "channel", None)
-        if channel is not None and hasattr(channel, "send"):
-            await channel.send(content)
+        # EventSub chat messages don't provide an IRC channel object.
+        # Use the Helix Chat API to send messages directly.
+        broadcaster_id = getattr(message, "broadcaster_user_id", None)
+        if not broadcaster_id:
+            logger.warning(
+                "Cannot send message: broadcaster_user_id not found on message object"
+            )
             return
 
-        ctx = self.get_context(message)
-        await ctx.send(content)
+        try:
+            await self.create_chat_message(
+                broadcaster_id=broadcaster_id,
+                sender_id=self.bot_id,
+                message=content,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send message to broadcaster %s", broadcaster_id
+            )
 
     @staticmethod
     def _message_channel_name(message) -> str:

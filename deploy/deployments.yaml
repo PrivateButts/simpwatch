@@ -155,6 +155,11 @@ spec:
                 secretKeyRef:
                   key: TWITCH_CLIENT_SECRET
                   name: simpwatch-env
+            - name: TWITCH_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_BOT_ACCESS_TOKEN
+                  name: simpwatch-env
             - name: TWITCH_BOT_ID
               valueFrom:
                 secretKeyRef:

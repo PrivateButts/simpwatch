@@ -7,6 +7,8 @@ on:
       - main
     tags:
       - "v*"
+    paths-ignore:
+      - 'deploy/**'
   workflow_dispatch:
 
 env:
@@ -114,3 +116,36 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  update-manifests:
+    needs: [build]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute SHA short tag
+        id: sha
+        run: echo "SHORT=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Update deploy manifests with SHA tag
+        run: |
+          SHORT="${{ steps.sha.outputs.SHORT }}"
+          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-web:[^\"]\+|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-web:sha-${SHORT}|g" deploy/deployments.yaml
+          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-twitch:[^\"]\+|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-twitch:sha-${SHORT}|g" deploy/deployments.yaml
+          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-discord:[^\"]\+|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-bot-discord:sha-${SHORT}|g" deploy/deployments.yaml
+
+      - name: Commit and push manifest updates
+        run: |
+          git config user.name "Remy"
+          git config user.email "remy@privatebutts.dev"
+          git add deploy/deployments.yaml
+          if git diff --cached --quiet; then
+            echo "No manifest changes to commit"
+          else
+            git commit -m "chore: bump image tags to sha-${{ steps.sha.outputs.SHORT }} [skip ci]"
+            git push
+          fi

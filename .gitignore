@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .ruff_cache/
+.venv/
 web/staticfiles/
 postgres_data/
 scratch.ipynb

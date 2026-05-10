@@ -8,7 +8,7 @@
   "runServices": ["db", "redis", "devcontainer"],
   "workspaceFolder": "/workspaces/simpwatch",
   "shutdownAction": "stopCompose",
-  "postCreateCommand": "pip install --no-cache-dir -r web/requirements-dev.txt",
+  "postCreateCommand": "uv sync",
   "customizations": {
     "vscode": {
       "extensions": [

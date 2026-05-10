@@ -35,6 +35,26 @@ Use this file as the default build/test/style contract unless a human request ov
 
 Run commands from repository root unless noted.
 
+### Setup
+
+This project uses `uv` as the Python package manager for fast, reproducible builds:
+
+```bash
+# Install uv (macOS/Linux):
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or on any platform with pip:
+pip install uv
+```
+
+After cloning, generate dependencies:
+
+```bash
+uv sync
+```
+
+This creates `uv.lock` with exact resolved versions.
+
 ### Docker (preferred)
 
 - Build and start all services:
@@ -63,25 +83,48 @@ Run commands from repository root unless noted.
 
 ### Local Python (without Docker)
 
+Before running local commands, install dependencies:
+
+```bash
+uv sync
+```
+
+Then run commands with `uv run`:
+
 - Compile all Python files (fast syntax check):
-  - `python3 -m compileall web services`
+  - `uv run python3 -m compileall web services`
+- Run Django commands:
+  - `cd web && uv run python manage.py migrate`
+  - `cd web && uv run python manage.py test simpwatch.tests.test_views`
+  - `cd web && uv run python manage.py runserver`
+- Run tests with pytest:
+  - `uv run pytest`
+  - `uv run pytest --cov=web/simpwatch`
+
+Or activate the environment and run directly:
+
+```bash
+. .venv/bin/activate  # if uv created a .venv
+cd web && python manage.py migrate
+```
 
 ## Test Commands
 
 Tests live in `web/simpwatch/tests/` and use Django's test runner.
 
+With Docker:
 - Run all tests:
   - `docker compose exec web python manage.py test`
 - Run tests for one module:
   - `docker compose exec web python manage.py test simpwatch.tests.test_scoring`
-  - `docker compose exec web python manage.py test simpwatch.tests.test_views`
-  - `docker compose exec web python manage.py test simpwatch.tests.test_command_parsing`
-- Run a single test case:
-  - `docker compose exec web python manage.py test simpwatch.tests.test_scoring.ScoringTests`
-- Run a single test method:
-  - `docker compose exec web python manage.py test simpwatch.tests.test_scoring.ScoringTests.test_register_simp`
 
-If running outside Docker, use the same `python manage.py test ...` commands from `web/`.
+Locally (requires `uv sync` first):
+- Run all tests:
+  - `uv run pytest`
+- Run with coverage:
+  - `uv run pytest --cov=web.simpwatch --cov-report=term-missing`
+- Run specific test module:
+  - `uv run pytest web/simpwatch/tests/test_views.py`
 
 ## Lint / Format / Type Checking
 

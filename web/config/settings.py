@@ -80,6 +80,13 @@ else:
         }
     }
 
+# Database connection pooling settings
+DATABASES["default"].setdefault("CONN_MAX_AGE", 300)  # 5 minutes
+DATABASES["default"].setdefault("OPTIONS", {})
+DATABASES["default"]["OPTIONS"]["connect_timeout"] = 5
+# Use server-side prepared statements to avoid connection issues
+DATABASES["default"]["OPTIONS"]["options"] = "-c statement_timeout=30000"
+
 CACHE_URL = os.getenv("CACHE_URL", "").strip()
 if CACHE_URL:
     CACHES = {

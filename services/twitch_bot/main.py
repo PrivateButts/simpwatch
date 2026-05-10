@@ -29,6 +29,8 @@ _stats: dict[str, int] = {
 _WATCHDOG_TIMEOUT_SECONDS = int(os.getenv("TWITCH_WATCHDOG_TIMEOUT", "300"))
 # How often (seconds) to emit the periodic stats log line.
 _STATS_INTERVAL_SECONDS = int(os.getenv("TWITCH_STATS_INTERVAL", "300"))
+# How long (seconds) to wait for database operations before timing out.
+_DB_OPERATION_TIMEOUT_SECONDS = int(os.getenv("TWITCH_DB_TIMEOUT", "10"))
 
 from simpwatch.models import Identity, SimpEvent  # noqa: E402
 
@@ -49,6 +51,28 @@ from simpwatch.scoring import (  # noqa: E402
     normalize_username,
     register_simp,
 )
+
+
+async def _db_call(coro_func, *args, **kwargs):
+    """Wrap a sync_to_async call with timeout and error handling."""
+    try:
+        result = await asyncio.wait_for(
+            sync_to_async(coro_func)(*args, **kwargs),
+            timeout=_DB_OPERATION_TIMEOUT_SECONDS,
+        )
+        return result
+    except asyncio.TimeoutError:
+        _stats["errors"] += 1
+        logger.error(
+            "Database operation timed out after %ds: %s",
+            _DB_OPERATION_TIMEOUT_SECONDS,
+            coro_func.__name__,
+        )
+        raise
+    except Exception as e:
+        _stats["errors"] += 1
+        logger.exception("Database operation failed in %s", coro_func.__name__)
+        raise
 
 
 def _ordinal(n: int) -> str:
@@ -140,7 +164,15 @@ class TwitchSimpBot(commands.Bot):
                         idle_seconds,
                         _WATCHDOG_TIMEOUT_SECONDS,
                     )
-                    await self.close()
+                    try:
+                        await asyncio.wait_for(self.close(), timeout=5)
+                    except asyncio.TimeoutError:
+                        logger.error("Failed to close bot connection (timeout)")
+                        # Force exit by clearing heartbeat so health check fails
+                        clear_heartbeat()
+                    except Exception as e:
+                        logger.exception("Error closing bot connection: %s", e)
+                        clear_heartbeat()
                     return
         except asyncio.CancelledError:
             raise
@@ -194,7 +226,10 @@ class TwitchSimpBot(commands.Bot):
         if bot_cmd is not None:
             _stats["commands_seen"] += 1
             command, args = bot_cmd
-            await self._handle_bot_command(message, command, args)
+            try:
+                await self._handle_bot_command(message, command, args)
+            except asyncio.TimeoutError:
+                logger.error("Database timeout handling bot command")
             return
 
         lowered = content.lower()
@@ -210,174 +245,177 @@ class TwitchSimpBot(commands.Bot):
             display_name=message.author.display_name or message.author.name,
         )
 
-        if lowered.startswith("!bamder"):
-            target_person = await sync_to_async(get_or_create_named_person)("pamder")
-            reason = parse_twitch_bamder_reason(content)
-            event_type = str(SimpEvent.EventType.BAMDER)
-        else:
-            parts = content.split()
-            if len(parts) > 1 and parts[1].startswith("@"):
-                bot_name = (self.nick or "bot").lstrip("@")
-                await message.channel.send(
-                    f"Use @{bot_name} simp @username for targeted simp callouts."
-                )
-                return
-
-            broadcaster = message.channel.name
-            target_person = await sync_to_async(get_or_create_twitch_target)(
-                broadcaster
-            )
-            reason = parse_twitch_reason(content)
-            event_type = str(SimpEvent.EventType.SIMP)
-
-        event = await sync_to_async(register_simp)(
-            actor=actor_input,
-            target=target_person,
-            platform=Identity.Platform.TWITCH,
-            event_type=event_type,
-            source=message.channel.name,
-            reason=reason,
-            raw_content=content,
-            message_id=str(message.id),
-            dedupe_key=f"twitch:{message.id}",
-        )
-        if event:
-            _stats["events_registered"] += 1
-            logger.info(
-                "event registered platform=twitch type=%s actor=%s target=%s "
-                "channel=%s event_id=%d points=%d",
-                event_type,
-                actor_input.username,
-                target_person.name,
-                message.channel.name,
-                event.id,
-                event.points,
-            )
-            if message.channel.name in self._reply_channels:
-                if event_type == str(SimpEvent.EventType.BAMDER):
-                    today, this_week, total = await sync_to_async(get_bamder_counts)(
-                        target_person
-                    )
+        try:
+            if lowered.startswith("!bamder"):
+                target_person = await _db_call(get_or_create_named_person, "pamder")
+                reason = parse_twitch_bamder_reason(content)
+                event_type = str(SimpEvent.EventType.BAMDER)
+            else:
+                parts = content.split()
+                if len(parts) > 1 and parts[1].startswith("@"):
+                    bot_name = (self.nick or "bot").lstrip("@")
                     await message.channel.send(
-                        f"Pamder has acted out AGAIN! "
-                        f"This is the {_ordinal(today)} time today, "
-                        f"{_ordinal(this_week)} time this week, "
-                        f"{_ordinal(total)} time total. "
-                        f"Someone oughta do something about that..."
+                        f"Use @{bot_name} simp @username for targeted simp callouts."
                     )
-                else:
-                    score, rank = await sync_to_async(get_score_and_rank_for_person)(
-                        target_person
-                    )
-                    if rank is not None:
-                        await message.channel.send(
-                            f"{target_person.name} is ranked #{rank} with {score} point(s)."
-                        )
-                    else:
-                        await message.channel.send(
-                            f"{target_person.name} has been registered!"
-                        )
-        else:
-            _stats["cooldowns"] += 1
-            logger.debug(
-                "cooldown active type=%s actor=%s target=%s channel=%s",
-                event_type,
-                actor_input.username,
-                target_person.name,
-                message.channel.name,
-            )
+                    return
 
-    async def _handle_bot_command(self, message, command: str, args: list[str]) -> None:
-        channel = message.channel
+                broadcaster = message.channel.name
+                target_person = await _db_call(get_or_create_twitch_target, broadcaster)
+                reason = parse_twitch_reason(content)
+                event_type = str(SimpEvent.EventType.SIMP)
 
-        if command == "simpcheck":
-            target_username = (
-                normalize_username(args[0]) if args else message.channel.name
-            )
-            score, rank = await sync_to_async(get_person_score_and_rank)(
-                target_username
-            )
-            if rank is None:
-                await channel.send(f"{target_username} has no score yet.")
-            else:
-                await channel.send(
-                    f"{target_username} is ranked #{rank} with {score} point(s)."
-                )
-
-        elif command == "standings":
-            limit = 3
-            if args:
-                try:
-                    limit = max(1, min(int(args[0]), 10))
-                except ValueError:
-                    pass
-            entries = await sync_to_async(get_leaderboard_entries)()
-            top = entries[:limit]
-            if not top:
-                await channel.send("No standings yet!")
-            else:
-                parts = [
-                    f"#{i + 1} {row['person'].name} ({row['points']} pts)"
-                    for i, row in enumerate(top)
-                ]
-                await channel.send(f"Top {len(top)} simps: " + ", ".join(parts))
-
-        elif command == "simp":
-            parsed = parse_bot_simp_args(args)
-            if parsed is None:
-                bot_name = (self.nick or "bot").lstrip("@")
-                await channel.send(
-                    f"Usage: @{bot_name} simp @username [reason <text>|because <text>]"
-                )
-                return
-
-            target_username, reason = parsed
-            actor_input = IdentityInput(
-                platform=Identity.Platform.TWITCH,
-                platform_user_id=str(message.author.id),
-                username=message.author.name,
-                display_name=message.author.display_name or message.author.name,
-            )
-            target_person = await sync_to_async(get_or_create_twitch_target)(
-                target_username
-            )
-            event = await sync_to_async(register_simp)(
+            event = await _db_call(
+                register_simp,
                 actor=actor_input,
                 target=target_person,
                 platform=Identity.Platform.TWITCH,
-                event_type=str(SimpEvent.EventType.SIMP),
+                event_type=event_type,
                 source=message.channel.name,
                 reason=reason,
-                raw_content=message.content or "",
+                raw_content=content,
                 message_id=str(message.id),
-                dedupe_key=f"twitch:mention:{message.id}",
+                dedupe_key=f"twitch:{message.id}",
             )
             if event:
                 _stats["events_registered"] += 1
                 logger.info(
-                    "event registered platform=twitch type=simp actor=%s target=%s "
+                    "event registered platform=twitch type=%s actor=%s target=%s "
                     "channel=%s event_id=%d points=%d",
-                    message.author.name,
+                    event_type,
+                    actor_input.username,
                     target_person.name,
                     message.channel.name,
                     event.id,
                     event.points,
                 )
-                score, rank = await sync_to_async(get_score_and_rank_for_person)(
-                    target_person
-                )
-                if rank is not None:
-                    await channel.send(
-                        f"{target_person.name} is ranked #{rank} with {score} point(s)."
-                    )
+                if message.channel.name in self._reply_channels:
+                    if event_type == str(SimpEvent.EventType.BAMDER):
+                        today, this_week, total = await _db_call(get_bamder_counts, target_person)
+                        await message.channel.send(
+                            f"Pamder has acted out AGAIN! "
+                            f"This is the {_ordinal(today)} time today, "
+                            f"{_ordinal(this_week)} time this week, "
+                            f"{_ordinal(total)} time total. "
+                            f"Someone oughta do something about that..."
+                        )
+                    else:
+                        score, rank = await _db_call(get_score_and_rank_for_person, target_person)
+                        if rank is not None:
+                            await message.channel.send(
+                                f"{target_person.name} is ranked #{rank} with {score} point(s)."
+                            )
+                        else:
+                            await message.channel.send(
+                                f"{target_person.name} has been registered!"
+                            )
             else:
                 _stats["cooldowns"] += 1
                 logger.debug(
-                    "cooldown active type=simp actor=%s target=%s channel=%s",
-                    message.author.name,
+                    "cooldown active type=%s actor=%s target=%s channel=%s",
+                    event_type,
+                    actor_input.username,
                     target_person.name,
                     message.channel.name,
                 )
+        except asyncio.TimeoutError:
+            logger.error(
+                "Database timeout processing message from %s in channel %s",
+                actor_input.username,
+                message.channel.name,
+            )
+        except Exception:
+            # Already logged by _db_call or event_message
+            pass
+
+    async def _handle_bot_command(self, message, command: str, args: list[str]) -> None:
+        channel = message.channel
+
+        try:
+            if command == "simpcheck":
+                target_username = (
+                    normalize_username(args[0]) if args else message.channel.name
+                )
+                score, rank = await _db_call(get_person_score_and_rank, target_username)
+                if rank is None:
+                    await channel.send(f"{target_username} has no score yet.")
+                else:
+                    await channel.send(
+                        f"{target_username} is ranked #{rank} with {score} point(s)."
+                    )
+
+            elif command == "standings":
+                limit = 3
+                if args:
+                    try:
+                        limit = max(1, min(int(args[0]), 10))
+                    except ValueError:
+                        pass
+                entries = await _db_call(get_leaderboard_entries)
+                top = entries[:limit]
+                if not top:
+                    await channel.send("No standings yet!")
+                else:
+                    parts = [
+                        f"#{i + 1} {row['person'].name} ({row['points']} pts)"
+                        for i, row in enumerate(top)
+                    ]
+                    await channel.send(f"Top {len(top)} simps: " + ", ".join(parts))
+
+            elif command == "simp":
+                parsed = parse_bot_simp_args(args)
+                if parsed is None:
+                    bot_name = (self.nick or "bot").lstrip("@")
+                    await channel.send(
+                        f"Usage: @{bot_name} simp @username [reason <text>|because <text>]"
+                    )
+                    return
+
+                target_username, reason = parsed
+                actor_input = IdentityInput(
+                    platform=Identity.Platform.TWITCH,
+                    platform_user_id=str(message.author.id),
+                    username=message.author.name,
+                    display_name=message.author.display_name or message.author.name,
+                )
+                target_person = await _db_call(get_or_create_twitch_target, target_username)
+                event = await _db_call(
+                    register_simp,
+                    actor=actor_input,
+                    target=target_person,
+                    platform=Identity.Platform.TWITCH,
+                    event_type=str(SimpEvent.EventType.SIMP),
+                    source=message.channel.name,
+                    reason=reason,
+                    raw_content=message.content or "",
+                    message_id=str(message.id),
+                    dedupe_key=f"twitch:mention:{message.id}",
+                )
+                if event:
+                    _stats["events_registered"] += 1
+                    logger.info(
+                        "event registered platform=twitch type=simp actor=%s target=%s "
+                        "channel=%s event_id=%d points=%d",
+                        message.author.name,
+                        target_person.name,
+                        message.channel.name,
+                        event.id,
+                        event.points,
+                    )
+                    score, rank = await _db_call(get_score_and_rank_for_person, target_person)
+                    if rank is not None:
+                        await channel.send(
+                            f"{target_person.name} is ranked #{rank} with {score} point(s)."
+                        )
+                else:
+                    _stats["cooldowns"] += 1
+                    logger.debug(
+                        "cooldown active type=simp actor=%s target=%s channel=%s",
+                        message.author.name,
+                        target_person.name,
+                        message.channel.name,
+                    )
+        except asyncio.TimeoutError:
+            logger.error("Database timeout in bot command: %s", command)
 
 
 if __name__ == "__main__":

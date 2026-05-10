@@ -240,23 +240,34 @@ class TwitchSimpBot(commands.Bot):
     async def _send_message(self, message, content: str) -> None:
         """Send a message to chat using the appropriate method.
 
-        For EventSub chat messages: use the Helix Chat API (broadcaster_user_id present).
+        For EventSub chat messages: prefer the event's respond helper.
         For IRC/test messages: use channel.send (for backwards compatibility and tests).
         """
-        broadcaster_id = getattr(message, "broadcaster_user_id", None)
+        if hasattr(message, "respond"):
+            try:
+                await message.respond(content)
+                return
+            except Exception:
+                logger.exception("Failed to send EventSub response via message.respond")
+
+        broadcaster = getattr(message, "broadcaster", None)
+        broadcaster_id = (
+            getattr(message, "broadcaster_user_id", None)
+            or getattr(broadcaster, "id", None)
+        )
         if broadcaster_id:
-            # EventSub message: use Helix Chat API
             try:
                 await self.create_chat_message(
-                    broadcaster_id=broadcaster_id,
+                    broadcaster_id=str(broadcaster_id),
                     sender_id=self.bot_id,
                     message=content,
                 )
+                return
             except Exception:
                 logger.exception(
-                    "Failed to send message to broadcaster %s", broadcaster_id
+                    "Failed to send message via create_chat_message broadcaster_id=%s",
+                    broadcaster_id,
                 )
-            return
 
         # Fallback: try channel.send (IRC or test mocks)
         channel = getattr(message, "channel", None)

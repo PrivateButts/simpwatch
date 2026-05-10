@@ -97,6 +97,7 @@ spec:
         - name: web
           image: ghcr.io/privatebutts/simpwatch-web:sha-b1e7745
           imagePullPolicy: Always
+          workingDir: /app/web
           command:
             - sh
             - -c
@@ -243,6 +244,11 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: POSTGRES_PASSWORD
+                  name: simpwatch-env
+            - name: TWITCH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  key: TWITCH_CLIENT_ID
                   name: simpwatch-env
             - name: TWITCH_BOT_USERNAME
               valueFrom:

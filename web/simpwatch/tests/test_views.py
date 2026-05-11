@@ -355,7 +355,7 @@ class BotTokenSetupTests(TestCase):
 
         with override_settings(
             TWITCH_CLIENT_ID="test-client",
-            TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/bot/callback",
+            TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/callback",
         ):
             response = self.client.get("/oauth/twitch/bot/start")
             self.assertEqual(response.status_code, 200)
@@ -365,11 +365,15 @@ class BotTokenSetupTests(TestCase):
             self.assertIn("client_id=", payload["oauth_url"])
             self.assertIn("scope=", payload["oauth_url"])
             self.assertIn("state=", payload["oauth_url"])
+            self.assertIn(
+                "redirect_uri=http%3A//localhost/oauth/twitch/bot/callback",
+                payload["oauth_url"],
+            )
 
     @override_settings(
         TWITCH_CLIENT_ID="test-client",
         TWITCH_CLIENT_SECRET="test-secret",
-        TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/bot/callback",
+        TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/callback",
         TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
     )
     @patch("simpwatch.views._exchange_twitch_code_for_tokens")
@@ -401,6 +405,10 @@ class BotTokenSetupTests(TestCase):
         payload = response.json()
         self.assertTrue(payload.get("ok"))
         self.assertEqual(payload.get("bot_username"), "simpbot")
+        mock_exchange.assert_called_once_with(
+            "auth-code-123",
+            redirect_uri="http://localhost/oauth/twitch/bot/callback",
+        )
 
         # Verify TwitchBotGrant was created
         grant = TwitchBotGrant.objects.get(bot_username="simpbot")

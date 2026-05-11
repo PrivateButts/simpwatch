@@ -20,6 +20,7 @@ from django.http import HttpResponse
 from django.views.decorators.http import require_POST
 from django.shortcuts import redirect
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils import timezone
 from cryptography.fernet import Fernet
 
@@ -170,19 +171,45 @@ def _normalized_watched_channels() -> set[str]:
     return {channel.strip().lower() for channel in _watched_channels() if channel.strip()}
 
 
-def _exchange_twitch_code_for_tokens(code: str) -> dict:
+def _exchange_twitch_code_for_tokens(code: str, *, redirect_uri: str | None = None) -> dict:
+    if not redirect_uri:
+        redirect_uri = getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", "")
     body = urllib.parse.urlencode(
         {
             "client_id": getattr(settings, "TWITCH_CLIENT_ID", ""),
             "client_secret": getattr(settings, "TWITCH_CLIENT_SECRET", ""),
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", ""),
+            "redirect_uri": redirect_uri,
         }
     ).encode("utf-8")
     request = urllib.request.Request(TWITCH_TOKEN_URL, data=body, method="POST")
     with urllib.request.urlopen(request, timeout=15) as response:
         return json.loads(response.read())
+
+
+def _bot_oauth_redirect_uri(request) -> str:
+    configured = getattr(settings, "TWITCH_BOT_TOKEN_REDIRECT_URI", "").strip()
+    if configured:
+        return configured
+
+    # Preserve host/scheme from the existing broadcaster redirect config.
+    legacy = getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", "").strip()
+    if legacy:
+        parsed = urllib.parse.urlparse(legacy)
+        if parsed.scheme and parsed.netloc:
+            return urllib.parse.urlunparse(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    "/oauth/twitch/bot/callback",
+                    "",
+                    "",
+                    "",
+                )
+            )
+
+    return request.build_absolute_uri(reverse("twitch_bot_token_callback"))
 
 
 def _validate_twitch_access_token(access_token: str) -> dict:
@@ -500,10 +527,10 @@ def twitch_bot_token_start(request):
         )
 
     client_id = getattr(settings, "TWITCH_CLIENT_ID", "").strip()
-    redirect_uri = getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", "").strip()
+    redirect_uri = _bot_oauth_redirect_uri(request)
     if not client_id or not redirect_uri:
         logger.error(
-            "Bot token setup not available: TWITCH_CLIENT_ID=%s TWITCH_TOKEN_REDIRECT_URI=%s",
+            "Bot token setup not available: TWITCH_CLIENT_ID=%s TWITCH_BOT_TOKEN_REDIRECT_URI=%s",
             "set" if client_id else "unset",
             "set" if redirect_uri else "unset",
         )
@@ -511,7 +538,7 @@ def twitch_bot_token_start(request):
             {
                 "ok": False,
                 "error": "misconfigured",
-                "detail": "Bot token setup is not configured. Set TWITCH_CLIENT_ID and TWITCH_TOKEN_REDIRECT_URI.",
+                "detail": "Bot token setup is not configured. Set TWITCH_CLIENT_ID and TWITCH_BOT_TOKEN_REDIRECT_URI.",
             },
             status=500,
         )
@@ -519,7 +546,7 @@ def twitch_bot_token_start(request):
     state = secrets.token_urlsafe(32)
     state_cache_key = f"{TWITCH_ONBOARD_STATE_CACHE_PREFIX}bot:{state}"
     ttl = getattr(settings, "TWITCH_ONBOARD_STATE_TTL_SECONDS", 600)
-    cache.set(state_cache_key, True, ttl)
+    cache.set(state_cache_key, {"redirect_uri": redirect_uri}, ttl)
 
     scopes = getattr(settings, "TWITCH_BROADCASTER_TOKEN_SCOPES", "channel:bot").split()
     oauth_url = (
@@ -559,15 +586,20 @@ def twitch_bot_token_callback(request):
         )
 
     state_cache_key = f"{TWITCH_ONBOARD_STATE_CACHE_PREFIX}bot:{state}"
-    if not cache.get(state_cache_key):
+    state_data = cache.get(state_cache_key)
+    if not state_data:
         return JsonResponse(
             {"ok": False, "error": "invalid_state", "detail": "OAuth state is invalid or expired."},
             status=400,
         )
     cache.delete(state_cache_key)
 
+    redirect_uri = _bot_oauth_redirect_uri(request)
+    if isinstance(state_data, dict):
+        redirect_uri = str(state_data.get("redirect_uri") or "").strip() or redirect_uri
+
     try:
-        token_data = _exchange_twitch_code_for_tokens(code)
+        token_data = _exchange_twitch_code_for_tokens(code, redirect_uri=redirect_uri)
     except Exception:
         logger.exception("Failed exchanging Twitch OAuth code for bot tokens")
         return JsonResponse(

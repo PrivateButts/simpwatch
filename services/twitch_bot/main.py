@@ -197,30 +197,19 @@ def _get_bot_grant_from_db() -> tuple[str, str, str, str] | None:
     Returns (username, user_id, access_token, refresh_token) or None if not found.
     """
     try:
-        from cryptography.fernet import Fernet
+        import base64
         import hashlib
+        from cryptography.fernet import Fernet
         from django.conf import settings
 
-        grant = TwitchBroadcasterGrant.objects.filter(
-            is_active=True
-        ).first()
+        grant = TwitchBotGrant.objects.filter(is_active=True).first()
         if not grant:
-            # Try to find using alternative query if first doesn't work
-            from simpwatch.models import TwitchBotGrant
-            grant = TwitchBotGrant.objects.filter(
-                is_active=True
-            ).first()
-            if not grant:
-                return None
-            username = grant.bot_username
-            user_id = grant.bot_user_id
-            access_token_encrypted = grant.access_token
-            refresh_token_encrypted = grant.refresh_token
-        else:
-            username = grant.username
-            user_id = grant.broadcaster_user_id
-            access_token_encrypted = grant.access_token
-            refresh_token_encrypted = grant.refresh_token
+            return None
+
+        username = grant.bot_username
+        user_id = grant.bot_user_id
+        access_token_encrypted = grant.access_token
+        refresh_token_encrypted = grant.refresh_token
 
         # Decrypt tokens
         raw_key = (
@@ -228,7 +217,6 @@ def _get_bot_grant_from_db() -> tuple[str, str, str, str] | None:
             or settings.SECRET_KEY
         )
         digest = hashlib.sha256(raw_key.encode("utf-8")).digest()
-        import base64
         fernet_key = base64.urlsafe_b64encode(digest)
         cipher = Fernet(fernet_key)
 
@@ -855,11 +843,24 @@ if __name__ == "__main__":
     required_env = {
         "TWITCH_CLIENT_ID": os.getenv("TWITCH_CLIENT_ID", "").strip(),
         "TWITCH_CLIENT_SECRET": os.getenv("TWITCH_CLIENT_SECRET", "").strip(),
-        "TWITCH_BOT_ID": os.getenv("TWITCH_BOT_ID", "").strip(),
-        "TWITCH_BOT_ACCESS_TOKEN": os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip(),
-        "TWITCH_BOT_REFRESH_TOKEN": os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip(),
         "TWITCH_CHANNELS": os.getenv("TWITCH_CHANNELS", "").strip(),
     }
+
+    db_grant = _get_bot_grant_from_db()
+    if db_grant:
+        logger.info(
+            "Using database-backed bot grant for startup preflight: username=%s",
+            db_grant[0],
+        )
+    else:
+        required_env.update(
+            {
+                "TWITCH_BOT_ID": os.getenv("TWITCH_BOT_ID", "").strip(),
+                "TWITCH_BOT_ACCESS_TOKEN": os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip(),
+                "TWITCH_BOT_REFRESH_TOKEN": os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip(),
+            }
+        )
+
     missing = [name for name, value in required_env.items() if not value]
     if missing:
         logger.error(

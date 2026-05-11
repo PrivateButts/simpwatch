@@ -239,18 +239,13 @@ def _get_bot_grant_from_db() -> tuple[str, str, str, str] | None:
 
 class TwitchSimpBot(commands.Bot):
     def __init__(self) -> None:
-        # Try to load bot grant from database first, then fall back to env vars
-        db_grant = _get_bot_grant_from_db()
-        if db_grant:
-            self._bot_username, self._bot_id, self._bot_access_token, self._bot_refresh_token = db_grant
-            logger.info("Loaded bot grant from database: username=%s", self._bot_username)
-        else:
-            self._bot_username = os.getenv("TWITCH_BOT_USERNAME", "").strip()
-            self._bot_access_token = os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip()
-            self._bot_refresh_token = os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip()
-            self._bot_id = os.getenv("TWITCH_BOT_ID", "").strip() or None
-            if self._bot_username:
-                logger.info("Using bot grant from environment variables: username=%s", self._bot_username)
+        # Load env var defaults; DB grant is loaded asynchronously in setup_hook
+        # to avoid Django's SynchronousOnlyOperation guard when called inside asyncio.
+        self._bot_username = os.getenv("TWITCH_BOT_USERNAME", "").strip()
+        self._bot_access_token = os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip()
+        self._bot_refresh_token = os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip()
+        self._bot_id = os.getenv("TWITCH_BOT_ID", "").strip() or None
+        self._db_grant_loaded: bool = False
 
         self._client_secret = os.getenv("TWITCH_CLIENT_SECRET", "").strip() or None
         self._channel_logins = list(_TWITCH_CHANNEL_LOGINS)
@@ -272,6 +267,21 @@ class TwitchSimpBot(commands.Bot):
         self.nick = self._bot_username
 
     async def setup_hook(self) -> None:
+        # Load bot grant from DB here — this is an async context so we must use
+        # asyncio.to_thread to avoid Django's SynchronousOnlyOperation guard.
+        db_grant = await asyncio.to_thread(_get_bot_grant_from_db)
+        if db_grant:
+            username, user_id, access_token, refresh_token = db_grant
+            self._bot_username = username
+            self._bot_id = user_id
+            self._bot_access_token = access_token
+            self._bot_refresh_token = refresh_token
+            self.nick = username
+            self._db_grant_loaded = True
+            logger.info("Loaded bot grant from database: username=%s", username)
+        elif self._bot_username:
+            logger.info("Using bot grant from environment variables: username=%s", self._bot_username)
+
         if not self._bot_id:
             raise RuntimeError(
                 "TWITCH_BOT_ID is required for EventSub websocket subscriptions."
@@ -316,24 +326,27 @@ class TwitchSimpBot(commands.Bot):
                         "Bot token successfully refreshed and validated. "
                         "Updating stored grant in database..."
                     )
-                    # Save refreshed tokens back to DB if grant exists there
-                    try:
-                        from datetime import datetime, timezone as dt_timezone, timedelta
-                        expires_in = 3600  # Assume 1 hour default
-                        expires_at = datetime.now(dt_timezone.utc) + timedelta(seconds=expires_in)
-
-                        grant = TwitchBotGrant.objects.filter(
-                            bot_username=self._bot_username.lower()
-                        ).first()
-                        if grant:
+                    # Save refreshed tokens back to DB if grant was loaded from there
+                    if self._db_grant_loaded:
+                        try:
+                            from datetime import datetime, timezone as dt_timezone, timedelta
                             from simpwatch.views import _encrypt_token
-                            grant.access_token = _encrypt_token(new_access_token)
-                            grant.refresh_token = _encrypt_token(new_refresh_token)
-                            grant.expires_at = expires_at
-                            grant.save(update_fields=["access_token", "refresh_token", "expires_at"])
-                            logger.info("Updated bot grant in database with refreshed tokens")
-                    except Exception as db_err:
-                        logger.warning("Failed to update bot grant in database: %s", db_err)
+                            expires_at = datetime.now(dt_timezone.utc) + timedelta(seconds=3600)
+
+                            def _save_refreshed_tokens() -> None:
+                                grant = TwitchBotGrant.objects.filter(
+                                    bot_username=self._bot_username.lower()
+                                ).first()
+                                if grant:
+                                    grant.access_token = _encrypt_token(new_access_token)
+                                    grant.refresh_token = _encrypt_token(new_refresh_token)
+                                    grant.expires_at = expires_at
+                                    grant.save(update_fields=["access_token", "refresh_token", "expires_at"])
+                                    logger.info("Updated bot grant in database with refreshed tokens")
+
+                            await asyncio.to_thread(_save_refreshed_tokens)
+                        except Exception as db_err:
+                            logger.warning("Failed to update bot grant in database: %s", db_err)
                 except Exception as refresh_err:
                     logger.exception("Failed to refresh expired bot token")
                     raise RuntimeError(

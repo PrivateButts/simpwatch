@@ -84,6 +84,55 @@ def _message(
     )
 
 
+class BotInitAsyncSafeTests(SimpleTestCase):
+    """Ensure TwitchSimpBot.__init__ does not make ORM calls (async-safe)."""
+
+    async def test_init_inside_event_loop_does_not_raise(self):
+        """Constructing the bot inside asyncio must not trigger SynchronousOnlyOperation."""
+        env = {
+            "TWITCH_BOT_USERNAME": "simpbot",
+            "TWITCH_CLIENT_ID": "test-client-id",
+            "TWITCH_CLIENT_SECRET": "test-client-secret",
+            "TWITCH_BOT_ID": "test-bot-id",
+            "TWITCH_BOT_ACCESS_TOKEN": "test-access-token",
+            "TWITCH_BOT_REFRESH_TOKEN": "test-refresh-token",
+            "TWITCH_CHANNELS": "streamerchan",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            # If __init__ still calls ORM code this will raise SynchronousOnlyOperation
+            bot = TwitchSimpBot()
+        self.assertEqual(bot._bot_username, "simpbot")
+        self.assertFalse(bot._db_grant_loaded)
+
+    async def test_setup_hook_loads_db_grant_via_thread(self):
+        """setup_hook fetches DB grant using asyncio.to_thread, not a direct ORM call."""
+        env = {
+            "TWITCH_BOT_USERNAME": "",
+            "TWITCH_CLIENT_ID": "test-client-id",
+            "TWITCH_CLIENT_SECRET": "test-client-secret",
+            "TWITCH_BOT_ID": "",
+            "TWITCH_BOT_ACCESS_TOKEN": "",
+            "TWITCH_BOT_REFRESH_TOKEN": "",
+            "TWITCH_CHANNELS": "streamerchan",
+        }
+        db_grant = ("simpbot", "bot-user-99", "acc-tok", "ref-tok")
+        with patch.dict(os.environ, env, clear=False):
+            bot = TwitchSimpBot()
+
+        with patch("services.twitch_bot.main._get_bot_grant_from_db", return_value=db_grant), \
+             patch.object(bot, "_validate_bot_token_for_eventsub_async", AsyncMock(), create=True), \
+             patch("services.twitch_bot.main._validate_bot_token_for_eventsub", return_value=None), \
+             patch.object(bot, "add_token", AsyncMock()), \
+             patch.object(bot, "_subscribe_to_channels", AsyncMock()):
+            await bot.setup_hook()
+
+        self.assertTrue(bot._db_grant_loaded)
+        self.assertEqual(bot._bot_username, "simpbot")
+        self.assertEqual(bot._bot_id, "bot-user-99")
+        self.assertEqual(bot._bot_access_token, "acc-tok")
+        self.assertEqual(bot._bot_refresh_token, "ref-tok")
+
+
 class EventMessageRoutingTests(SimpleTestCase):
     """Tests for event_message — gating, counter updates, error trapping."""
 

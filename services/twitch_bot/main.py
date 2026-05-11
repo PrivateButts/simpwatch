@@ -220,12 +220,20 @@ def _get_bot_grant_from_db() -> tuple[str, str, str, str] | None:
         fernet_key = base64.urlsafe_b64encode(digest)
         cipher = Fernet(fernet_key)
 
-        access_token = cipher.decrypt(access_token_encrypted.encode("utf-8")).decode("utf-8")
-        refresh_token = cipher.decrypt(refresh_token_encrypted.encode("utf-8")).decode("utf-8")
+        try:
+            access_token = cipher.decrypt(access_token_encrypted.encode("utf-8")).decode("utf-8")
+            refresh_token = cipher.decrypt(refresh_token_encrypted.encode("utf-8")).decode("utf-8")
+        except Exception:
+            logger.error(
+                "Failed to decrypt bot grant tokens — TWITCH_GRANT_ENCRYPTION_KEY in the bot "
+                "container does not match the key used by the web container. "
+                "Set the same TWITCH_GRANT_ENCRYPTION_KEY in both deployments."
+            )
+            return None
 
         return username, user_id, access_token, refresh_token
     except Exception as e:
-        logger.warning("Failed to fetch bot grant from DB: %s", e)
+        logger.warning("Failed to fetch bot grant from DB: %s", e, exc_info=True)
         return None
 
 

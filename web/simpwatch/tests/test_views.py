@@ -355,6 +355,7 @@ class BotTokenSetupTests(TestCase):
 
         with override_settings(
             TWITCH_CLIENT_ID="test-client",
+            TWITCH_CLIENT_SECRET="test-secret",
             TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/callback",
         ):
             response = self.client.get("/oauth/twitch/bot/start")

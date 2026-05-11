@@ -174,6 +174,7 @@ def _normalized_watched_channels() -> set[str]:
 def _exchange_twitch_code_for_tokens(code: str, *, redirect_uri: str | None = None) -> dict:
     if not redirect_uri:
         redirect_uri = getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", "")
+    redirect_uri = str(redirect_uri).strip()
     body = urllib.parse.urlencode(
         {
             "client_id": getattr(settings, "TWITCH_CLIENT_ID", ""),
@@ -184,8 +185,30 @@ def _exchange_twitch_code_for_tokens(code: str, *, redirect_uri: str | None = No
         }
     ).encode("utf-8")
     request = urllib.request.Request(TWITCH_TOKEN_URL, data=body, method="POST")
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.loads(response.read())
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        raw_body = ""
+        try:
+            raw_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            raw_body = ""
+
+        detail = "unknown_error"
+        if raw_body:
+            try:
+                payload = json.loads(raw_body)
+                detail = (
+                    str(payload.get("message") or payload.get("error") or "").strip()
+                    or detail
+                )
+            except json.JSONDecodeError:
+                detail = raw_body.strip() or detail
+
+        raise RuntimeError(
+            f"Twitch token exchange failed ({exc.code}): {detail}"
+        ) from exc
 
 
 def _bot_oauth_redirect_uri(request) -> str:
@@ -527,18 +550,20 @@ def twitch_bot_token_start(request):
         )
 
     client_id = getattr(settings, "TWITCH_CLIENT_ID", "").strip()
+    client_secret = getattr(settings, "TWITCH_CLIENT_SECRET", "").strip()
     redirect_uri = _bot_oauth_redirect_uri(request)
-    if not client_id or not redirect_uri:
+    if not client_id or not client_secret or not redirect_uri:
         logger.error(
-            "Bot token setup not available: TWITCH_CLIENT_ID=%s TWITCH_BOT_TOKEN_REDIRECT_URI=%s",
+            "Bot token setup not available: TWITCH_CLIENT_ID=%s TWITCH_CLIENT_SECRET=%s TWITCH_BOT_TOKEN_REDIRECT_URI=%s",
             "set" if client_id else "unset",
+            "set" if client_secret else "unset",
             "set" if redirect_uri else "unset",
         )
         return JsonResponse(
             {
                 "ok": False,
                 "error": "misconfigured",
-                "detail": "Bot token setup is not configured. Set TWITCH_CLIENT_ID and TWITCH_BOT_TOKEN_REDIRECT_URI.",
+                "detail": "Bot token setup is not configured. Set TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, and TWITCH_BOT_TOKEN_REDIRECT_URI.",
             },
             status=500,
         )
@@ -600,10 +625,10 @@ def twitch_bot_token_callback(request):
 
     try:
         token_data = _exchange_twitch_code_for_tokens(code, redirect_uri=redirect_uri)
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed exchanging Twitch OAuth code for bot tokens")
         return JsonResponse(
-            {"ok": False, "error": "token_exchange_failed", "detail": "Unable to exchange OAuth code."},
+            {"ok": False, "error": "token_exchange_failed", "detail": str(exc)},
             status=502,
         )
 

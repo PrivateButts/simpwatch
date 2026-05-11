@@ -4,6 +4,8 @@ import logging
 import os
 import sys
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from twitchio.exceptions import HTTPException
 
@@ -53,7 +55,7 @@ _TWITCH_REPLY_CHANNELS = {
 }
 _REPLY_GRANT_CACHE_SECONDS = int(os.getenv("TWITCH_REPLY_GRANT_CACHE_SECONDS", "30"))
 
-from simpwatch.models import Identity, SimpEvent, TwitchBroadcasterGrant  # noqa: E402
+from simpwatch.models import Identity, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant  # noqa: E402
 
 from simpwatch.command_parsing import (  # noqa: E402
     parse_bot_simp_args,
@@ -147,6 +149,41 @@ def _validate_bot_token_for_eventsub(
         )
 
 
+def _refresh_bot_token(
+    client_id: str,
+    client_secret: str,
+    refresh_token: str,
+) -> tuple[str, str]:
+    """Refresh an expired access token using the refresh token.
+
+    Returns a tuple of (new_access_token, new_refresh_token).
+    """
+    params = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    }
+    req = urllib.request.Request(
+        "https://id.twitch.tv/oauth2/token",
+        data=urllib.parse.urlencode(params).encode("utf-8"),
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    new_access_token = payload.get("access_token", "").strip()
+    new_refresh_token = payload.get("refresh_token", "").strip()
+
+    if not new_access_token or not new_refresh_token:
+        raise RuntimeError(
+            "Twitch token refresh failed: missing access_token or refresh_token in response"
+        )
+
+    logger.info("Successfully refreshed bot access token via refresh_token")
+    return new_access_token, new_refresh_token
+
+
 def _has_active_broadcaster_grant(username: str) -> bool:
     return TwitchBroadcasterGrant.objects.filter(
         username=username,
@@ -154,13 +191,72 @@ def _has_active_broadcaster_grant(username: str) -> bool:
     ).exists()
 
 
+def _get_bot_grant_from_db() -> tuple[str, str, str, str] | None:
+    """Fetch active bot grant from database.
+
+    Returns (username, user_id, access_token, refresh_token) or None if not found.
+    """
+    try:
+        from cryptography.fernet import Fernet
+        import hashlib
+        from django.conf import settings
+
+        grant = TwitchBroadcasterGrant.objects.filter(
+            is_active=True
+        ).first()
+        if not grant:
+            # Try to find using alternative query if first doesn't work
+            from simpwatch.models import TwitchBotGrant
+            grant = TwitchBotGrant.objects.filter(
+                is_active=True
+            ).first()
+            if not grant:
+                return None
+            username = grant.bot_username
+            user_id = grant.bot_user_id
+            access_token_encrypted = grant.access_token
+            refresh_token_encrypted = grant.refresh_token
+        else:
+            username = grant.username
+            user_id = grant.broadcaster_user_id
+            access_token_encrypted = grant.access_token
+            refresh_token_encrypted = grant.refresh_token
+
+        # Decrypt tokens
+        raw_key = (
+            getattr(settings, "TWITCH_GRANT_ENCRYPTION_KEY", "").strip()
+            or settings.SECRET_KEY
+        )
+        digest = hashlib.sha256(raw_key.encode("utf-8")).digest()
+        import base64
+        fernet_key = base64.urlsafe_b64encode(digest)
+        cipher = Fernet(fernet_key)
+
+        access_token = cipher.decrypt(access_token_encrypted.encode("utf-8")).decode("utf-8")
+        refresh_token = cipher.decrypt(refresh_token_encrypted.encode("utf-8")).decode("utf-8")
+
+        return username, user_id, access_token, refresh_token
+    except Exception as e:
+        logger.warning("Failed to fetch bot grant from DB: %s", e)
+        return None
+
+
 class TwitchSimpBot(commands.Bot):
     def __init__(self) -> None:
-        self._bot_username = os.getenv("TWITCH_BOT_USERNAME", "").strip()
-        self._bot_access_token = os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip()
-        self._bot_refresh_token = os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip()
+        # Try to load bot grant from database first, then fall back to env vars
+        db_grant = _get_bot_grant_from_db()
+        if db_grant:
+            self._bot_username, self._bot_id, self._bot_access_token, self._bot_refresh_token = db_grant
+            logger.info("Loaded bot grant from database: username=%s", self._bot_username)
+        else:
+            self._bot_username = os.getenv("TWITCH_BOT_USERNAME", "").strip()
+            self._bot_access_token = os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip()
+            self._bot_refresh_token = os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip()
+            self._bot_id = os.getenv("TWITCH_BOT_ID", "").strip() or None
+            if self._bot_username:
+                logger.info("Using bot grant from environment variables: username=%s", self._bot_username)
+
         self._client_secret = os.getenv("TWITCH_CLIENT_SECRET", "").strip() or None
-        self._bot_id = os.getenv("TWITCH_BOT_ID", "").strip() or None
         self._channel_logins = list(_TWITCH_CHANNEL_LOGINS)
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._watchdog_task: asyncio.Task[None] | None = None
@@ -190,11 +286,65 @@ class TwitchSimpBot(commands.Bot):
                 "TWITCH_BOT_ACCESS_TOKEN and TWITCH_BOT_REFRESH_TOKEN are required to subscribe to Twitch chat via EventSub."
             )
 
-        await asyncio.to_thread(
-            _validate_bot_token_for_eventsub,
-            self._bot_access_token,
-            self._bot_id,
-        )
+        # Try to validate the current token; if it's expired, refresh it automatically.
+        try:
+            await asyncio.to_thread(
+                _validate_bot_token_for_eventsub,
+                self._bot_access_token,
+                self._bot_id,
+            )
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401:
+                logger.warning(
+                    "Bot access token is expired (401). Attempting to refresh using refresh_token..."
+                )
+                try:
+                    client_id = os.getenv("TWITCH_CLIENT_ID", "").strip()
+                    client_secret = self._client_secret
+                    new_access_token, new_refresh_token = await asyncio.to_thread(
+                        _refresh_bot_token,
+                        client_id,
+                        client_secret,
+                        self._bot_refresh_token,
+                    )
+                    self._bot_access_token = new_access_token
+                    self._bot_refresh_token = new_refresh_token
+
+                    # Validate the new token
+                    await asyncio.to_thread(
+                        _validate_bot_token_for_eventsub,
+                        self._bot_access_token,
+                        self._bot_id,
+                    )
+                    logger.info(
+                        "Bot token successfully refreshed and validated. "
+                        "Updating stored grant in database..."
+                    )
+                    # Save refreshed tokens back to DB if grant exists there
+                    try:
+                        from datetime import datetime, timezone as dt_timezone, timedelta
+                        expires_in = 3600  # Assume 1 hour default
+                        expires_at = datetime.now(dt_timezone.utc) + timedelta(seconds=expires_in)
+
+                        grant = TwitchBotGrant.objects.filter(
+                            bot_username=self._bot_username.lower()
+                        ).first()
+                        if grant:
+                            from simpwatch.views import _encrypt_token
+                            grant.access_token = _encrypt_token(new_access_token)
+                            grant.refresh_token = _encrypt_token(new_refresh_token)
+                            grant.expires_at = expires_at
+                            grant.save(update_fields=["access_token", "refresh_token", "expires_at"])
+                            logger.info("Updated bot grant in database with refreshed tokens")
+                    except Exception as db_err:
+                        logger.warning("Failed to update bot grant in database: %s", db_err)
+                except Exception as refresh_err:
+                    logger.exception("Failed to refresh expired bot token")
+                    raise RuntimeError(
+                        f"Bot access token is expired and refresh failed: {refresh_err}"
+                    ) from refresh_err
+            else:
+                raise
 
         await self.add_token(self._bot_access_token, self._bot_refresh_token)
         await self._subscribe_to_channels()

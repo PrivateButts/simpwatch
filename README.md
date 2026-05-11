@@ -194,28 +194,57 @@ Useful Helm values:
 
 ### Twitch Bot
 
+#### Database-Backed Token Management (Recommended)
+
+The bot can now manage tokens in the database via the web admin interface, similar to the broadcaster onboarding flow. This approach provides:
+- **Automatic token refresh** – tokens are refreshed on bot startup
+- **Admin UI management** – rotate/revoke tokens from Django admin
+- **Persistent storage** – tokens survive pod restarts
+- **Encryption at rest** – tokens are encrypted in the database
+
+**Setup:**
+
 1. Create a Twitch account for the bot (recommended, separate from your main account).
 2. Create a Twitch application and note the `CLIENT_ID` and `CLIENT_SECRET`.
-3. Generate a refreshable user token pair for the bot account with chat scopes (`user:read:chat`, `user:write:chat`, `user:bot`).
-4. In `.env`, set:
-  - `TWITCH_BOT_USERNAME=<bot account username>`
-  - `TWITCH_CLIENT_ID=<twitch client id>`
-  - `TWITCH_CLIENT_SECRET=<twitch client secret>`
-  - `TWITCH_BOT_ID=<bot account user id>`
-  - `TWITCH_BOT_ACCESS_TOKEN=<access token>`
-  - `TWITCH_BOT_REFRESH_TOKEN=<refresh token>`
-  - `TWITCH_CHANNELS=channel_one,channel_two`
-5. Restart only the Twitch worker:
+3. Set web env vars:
+   - `TWITCH_CLIENT_ID=<twitch client id>`
+   - `TWITCH_CLIENT_SECRET=<twitch client secret>`
+   - `TWITCH_TOKEN_REDIRECT_URI=https://<your-domain>/oauth/twitch/bot/callback`
+   - `TWITCH_GRANT_ENCRYPTION_KEY=<random 32-byte base64 string>`
+4. Start the web app and log into the admin panel with a staff user
+5. Visit `/oauth/twitch/bot/start` to initiate the bot token setup flow
+6. You'll be redirected to Twitch to authorize the bot account
+7. After authorization, the bot token will be stored in the database automatically
+8. Restart the Twitch bot worker – it will fetch and use the token from the database:
 
 ```bash
 docker compose up -d --build bot_twitch
 docker compose logs -f bot_twitch
 ```
 
-Expected log after successful auth: `Twitch bot ready user=<name> channels=[...]`.
-The container now reports `healthy` only after the bot has connected and keeps
-refreshing its heartbeat; missing config, auth failures, or a stale/disconnected
-session will mark it `unhealthy`.
+Expected log: `Twitch bot ready user=<name> channels=[...]`.
+
+**Token Expiration:**
+When a token expires, the bot automatically refreshes it on startup using the refresh token. Refreshed tokens are automatically saved to the database, so no manual updates are needed.
+
+#### Legacy: Environment Variable Tokens
+
+If you prefer to manage tokens via env vars (not recommended for production), you can still use the original approach:
+
+1. Create a Twitch account for the bot.
+2. Create a Twitch application and note the `CLIENT_ID` and `CLIENT_SECRET`.
+3. Generate a refreshable user token pair for the bot account with chat scopes (`user:read:chat`, `user:write:chat`, `user:bot`).
+4. In `.env` or secrets, set:
+   - `TWITCH_BOT_USERNAME=<bot account username>`
+   - `TWITCH_CLIENT_ID=<twitch client id>`
+   - `TWITCH_CLIENT_SECRET=<twitch client secret>`
+   - `TWITCH_BOT_ID=<bot account user id>`
+   - `TWITCH_BOT_ACCESS_TOKEN=<access token>`
+   - `TWITCH_BOT_REFRESH_TOKEN=<refresh token>`
+   - `TWITCH_CHANNELS=channel_one,channel_two`
+5. Restart the bot worker
+
+The bot will fall back to env vars if no database grant is found. Like the database approach, tokens are automatically refreshed on expiration.
 
 ### Broadcaster Onboarding (`channel:bot`)
 

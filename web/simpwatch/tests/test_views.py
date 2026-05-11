@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from unittest.mock import patch
 
-from simpwatch.models import Identity, Person, SimpEvent, TwitchBroadcasterGrant
+from simpwatch.models import Identity, Person, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant
 
 
 class LeaderboardViewTests(TestCase):
@@ -330,3 +330,93 @@ class TwitchOnboardingViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         grant.refresh_from_db()
         self.assertFalse(grant.is_active)
+
+
+class BotTokenSetupTests(TestCase):
+    """Test bot OAuth token setup flow (/oauth/twitch/bot/*)"""
+
+    def test_bot_token_start_requires_staff(self):
+        """Non-staff users cannot start bot token setup"""
+        response = self.client.get("/oauth/twitch/bot/start")
+        self.assertEqual(response.status_code, 403)
+        payload = response.json()
+        self.assertFalse(payload.get("ok"))
+        self.assertEqual(payload.get("error"), "forbidden")
+
+    def test_bot_token_start_returns_oauth_url_for_staff(self):
+        """Staff users get OAuth URL to redirect to"""
+        staff = get_user_model().objects.create_user(
+            username="admin",
+            email="admin@example.com",
+            password="pw",
+            is_staff=True,
+        )
+        self.client.force_login(staff)
+
+        with override_settings(
+            TWITCH_CLIENT_ID="test-client",
+            TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/bot/callback",
+        ):
+            response = self.client.get("/oauth/twitch/bot/start")
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertTrue(payload.get("ok"))
+            self.assertIn("oauth_url", payload)
+            self.assertIn("client_id=", payload["oauth_url"])
+            self.assertIn("scope=", payload["oauth_url"])
+            self.assertIn("state=", payload["oauth_url"])
+
+    @override_settings(
+        TWITCH_CLIENT_ID="test-client",
+        TWITCH_CLIENT_SECRET="test-secret",
+        TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/bot/callback",
+        TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
+    )
+    @patch("simpwatch.views._exchange_twitch_code_for_tokens")
+    @patch("simpwatch.views._validate_twitch_access_token")
+    def test_bot_token_callback_creates_bot_grant(self, mock_validate, mock_exchange):
+        """OAuth callback creates/updates TwitchBotGrant with encrypted tokens"""
+        # Mock Twitch API responses
+        mock_exchange.return_value = {
+            "access_token": "bot-access-token-xyz",
+            "refresh_token": "bot-refresh-token-abc",
+            "expires_in": 3600,
+        }
+        mock_validate.return_value = {
+            "login": "simpbot",
+            "user_id": "9999",
+            "scopes": ["user:bot", "user:read:chat", "user:write:chat"],
+        }
+
+        # Create a state in cache (normally done by /start endpoint)
+        state = "test-state-12345"
+        cache.set(f"twitch:onboard:state:bot:{state}", True, 600)
+
+        # Exchange code for tokens
+        response = self.client.get(
+            "/oauth/twitch/bot/callback",
+            {"code": "auth-code-123", "state": state},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(payload.get("bot_username"), "simpbot")
+
+        # Verify TwitchBotGrant was created
+        grant = TwitchBotGrant.objects.get(bot_username="simpbot")
+        self.assertEqual(grant.bot_user_id, "9999")
+        self.assertTrue(grant.is_active)
+        # Tokens should be encrypted (not plain text)
+        self.assertNotEqual(grant.access_token, "bot-access-token-xyz")
+        self.assertNotEqual(grant.refresh_token, "bot-refresh-token-abc")
+
+    def test_bot_token_callback_rejects_invalid_state(self):
+        """OAuth callback rejects invalid or expired state"""
+        response = self.client.get(
+            "/oauth/twitch/bot/callback",
+            {"code": "auth-code", "state": "invalid-state"},
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertFalse(payload.get("ok"))
+        self.assertEqual(payload.get("error"), "invalid_state")

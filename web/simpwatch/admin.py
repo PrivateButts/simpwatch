@@ -7,6 +7,7 @@ from .models import (
     ScoreAdjustment,
     ScoringConfig,
     SimpEvent,
+    TwitchBotGrant,
     TwitchBroadcasterGrant,
 )
 from .scoring import bump_leaderboard_cache_version, merge_people
@@ -141,4 +142,46 @@ class TwitchBroadcasterGrantAdmin(admin.ModelAdmin):
             request,
             f"Activated {count} broadcaster grant(s).",
             level=messages.SUCCESS,
+        )
+
+
+@admin.register(TwitchBotGrant)
+class TwitchBotGrantAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "bot_username",
+        "bot_user_id",
+        "is_active",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("is_active",)
+    search_fields = ("bot_username", "bot_user_id")
+    actions = ("deactivate_grant", "activate_grant", "refresh_token")
+
+    @admin.action(description="Deactivate bot grant")
+    def deactivate_grant(self, request, queryset):
+        count = queryset.update(is_active=False)
+        self.message_user(
+            request,
+            f"Deactivated {count} bot grant(s).",
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="Activate bot grant")
+    def activate_grant(self, request, queryset):
+        count = queryset.update(is_active=True)
+        self.message_user(
+            request,
+            f"Activated {count} bot grant(s).",
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="Manually refresh token (updates in next bot restart)")
+    def refresh_token(self, request, queryset):
+        # Note: actual refresh happens on bot startup
+        self.message_user(
+            request,
+            "Bot token will be refreshed on next startup. Check bot logs for refresh status.",
+            level=messages.INFO,
         )

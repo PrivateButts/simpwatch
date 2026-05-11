@@ -209,6 +209,11 @@ def _encrypt_token(plain_text: str) -> str:
     return _token_cipher().encrypt(plain_text.encode("utf-8")).decode("utf-8")
 
 
+def _decrypt_token(encrypted_text: str) -> str:
+    """Decrypt a token encrypted with _encrypt_token()."""
+    return _token_cipher().decrypt(encrypted_text.encode("utf-8")).decode("utf-8")
+
+
 _TWITCH_CHANNEL_CACHE_KEY = "twitch_channel_data"
 _TWITCH_CHANNEL_CACHE_TTL = 60  # seconds
 
@@ -479,6 +484,145 @@ def twitch_onboard_revoke(request):
         )
 
     return JsonResponse({"ok": True, "revoked": True, "username": username})
+
+
+def twitch_bot_token_start(request):
+    """Initiate Twitch OAuth flow to set up bot account tokens.
+
+    Only staff users can start the bot token setup flow.
+    Returns JSON with oauth_url to redirect to.
+    """
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated or not user.is_staff:
+        return JsonResponse(
+            {"ok": False, "error": "forbidden", "detail": "Staff authentication required."},
+            status=403,
+        )
+
+    client_id = getattr(settings, "TWITCH_CLIENT_ID", "").strip()
+    redirect_uri = getattr(settings, "TWITCH_TOKEN_REDIRECT_URI", "").strip()
+    if not client_id or not redirect_uri:
+        logger.error(
+            "Bot token setup not available: TWITCH_CLIENT_ID=%s TWITCH_TOKEN_REDIRECT_URI=%s",
+            "set" if client_id else "unset",
+            "set" if redirect_uri else "unset",
+        )
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "misconfigured",
+                "detail": "Bot token setup is not configured. Set TWITCH_CLIENT_ID and TWITCH_TOKEN_REDIRECT_URI.",
+            },
+            status=500,
+        )
+
+    state = secrets.token_urlsafe(32)
+    state_cache_key = f"{TWITCH_ONBOARD_STATE_CACHE_PREFIX}bot:{state}"
+    ttl = getattr(settings, "TWITCH_ONBOARD_STATE_TTL_SECONDS", 600)
+    cache.set(state_cache_key, True, ttl)
+
+    scopes = getattr(settings, "TWITCH_BROADCASTER_TOKEN_SCOPES", "channel:bot").split()
+    oauth_url = (
+        f"https://id.twitch.tv/oauth2/authorize"
+        f"?client_id={urllib.parse.quote(client_id)}"
+        f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
+        f"&response_type=code"
+        f"&scope={urllib.parse.quote(' '.join(scopes))}"
+        f"&state={urllib.parse.quote(state)}"
+    )
+
+    return JsonResponse({"ok": True, "oauth_url": oauth_url})
+
+
+def twitch_bot_token_callback(request):
+    """Handle Twitch OAuth callback for bot account tokens.
+
+    Exchanges code for tokens, validates token identity, and stores in DB with encryption.
+    """
+    error = request.GET.get("error", "").strip()
+    if error:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "oauth_denied",
+                "detail": request.GET.get("error_description", "authorization denied"),
+            },
+            status=400,
+        )
+
+    state = request.GET.get("state", "").strip()
+    code = request.GET.get("code", "").strip()
+    if not state or not code:
+        return JsonResponse(
+            {"ok": False, "error": "invalid_callback", "detail": "Missing state or code."},
+            status=400,
+        )
+
+    state_cache_key = f"{TWITCH_ONBOARD_STATE_CACHE_PREFIX}bot:{state}"
+    if not cache.get(state_cache_key):
+        return JsonResponse(
+            {"ok": False, "error": "invalid_state", "detail": "OAuth state is invalid or expired."},
+            status=400,
+        )
+    cache.delete(state_cache_key)
+
+    try:
+        token_data = _exchange_twitch_code_for_tokens(code)
+    except Exception:
+        logger.exception("Failed exchanging Twitch OAuth code for bot tokens")
+        return JsonResponse(
+            {"ok": False, "error": "token_exchange_failed", "detail": "Unable to exchange OAuth code."},
+            status=502,
+        )
+
+    access_token = str(token_data.get("access_token", "")).strip()
+    refresh_token = str(token_data.get("refresh_token", "")).strip()
+    if not access_token or not refresh_token:
+        return JsonResponse(
+            {"ok": False, "error": "token_exchange_failed", "detail": "Missing access or refresh token."},
+            status=502,
+        )
+
+    try:
+        validation = _validate_twitch_access_token(access_token)
+    except Exception:
+        logger.exception("Failed validating Twitch OAuth token for bot")
+        return JsonResponse(
+            {"ok": False, "error": "token_validation_failed", "detail": "Unable to validate access token."},
+            status=502,
+        )
+
+    bot_username = str(validation.get("login", "")).strip().lower()
+    bot_user_id = str(validation.get("user_id", "")).strip()
+    scopes = validation.get("scopes", []) or []
+    if not bot_username or not bot_user_id:
+        return JsonResponse(
+            {"ok": False, "error": "token_validation_failed", "detail": "Validation response missing user identity."},
+            status=502,
+        )
+
+    expires_in = int(token_data.get("expires_in") or 0)
+    expires_at = None
+    if expires_in > 0:
+        expires_at = datetime.now(dt_timezone.utc) + timedelta(seconds=expires_in)
+
+    from .models import TwitchBotGrant  # noqa: E402
+
+    TwitchBotGrant.objects.update_or_create(
+        bot_username=bot_username,
+        defaults={
+            "bot_user_id": bot_user_id,
+            "access_token": _encrypt_token(access_token),
+            "refresh_token": _encrypt_token(refresh_token),
+            "scopes": " ".join(scopes),
+            "expires_at": expires_at,
+            "is_active": True,
+        },
+    )
+
+    logger.info("Successfully stored bot OAuth grant for bot_username=%s", bot_username)
+
+    return JsonResponse({"ok": True, "bot_username": bot_username, "stored": True})
 
 
 def leaderboard_page(request):

@@ -129,3 +129,33 @@ class TwitchBroadcasterGrant(models.Model):
     def __str__(self) -> str:
         status = "active" if self.is_active else "inactive"
         return f"twitch:{self.username} ({status})"
+
+
+class TwitchBotGrant(models.Model):
+    """Encrypted OAuth token for the Twitch bot account.
+
+    This is typically a singleton row. Tokens are refreshed automatically
+    when expired.
+    """
+    bot_username = models.CharField(max_length=255, unique=True)
+    bot_user_id = models.CharField(max_length=255, unique=True)
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    scopes = models.TextField(blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["is_active"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.bot_username = self.bot_username.strip().lower()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        status = "active" if self.is_active else "inactive"
+        return f"twitch-bot:{self.bot_username} ({status})"

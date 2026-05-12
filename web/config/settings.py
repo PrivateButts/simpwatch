@@ -135,12 +135,6 @@ TWITCH_BOT_USERNAME = os.getenv("TWITCH_BOT_USERNAME", "")
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID", "")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET", "")
 TWITCH_BOT_ACCESS_TOKEN = os.getenv("TWITCH_BOT_ACCESS_TOKEN", "")
-_oauth_token = os.getenv("TWITCH_OAUTH_TOKEN", "")
-TWITCH_OAUTH_TOKEN = (
-    _oauth_token
-    if _oauth_token
-    else (f"oauth:{TWITCH_BOT_ACCESS_TOKEN}" if TWITCH_BOT_ACCESS_TOKEN else "")
-)
 TWITCH_TOKEN_SCOPES = os.getenv("TWITCH_TOKEN_SCOPES", "chat:read chat:edit")
 TWITCH_TOKEN_REDIRECT_URI = os.getenv("TWITCH_TOKEN_REDIRECT_URI", "").strip()
 TWITCH_ONBOARD_STATE_TTL_SECONDS = int(

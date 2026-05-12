@@ -267,24 +267,65 @@ def _decrypt_token(encrypted_text: str) -> str:
 
 _TWITCH_CHANNEL_CACHE_KEY = "twitch_channel_data"
 _TWITCH_CHANNEL_CACHE_TTL = 60  # seconds
+_TWITCH_APP_TOKEN_CACHE_KEY = "twitch:app_access_token"
+# App tokens live up to 60 days; cache for 24h so we refresh well before expiry.
+_TWITCH_APP_TOKEN_CACHE_TTL = 86400
+
+
+def _get_app_access_token(client_id: str, client_secret: str) -> str | None:
+    """Return a cached Twitch App Access Token, fetching a new one if needed.
+
+    Uses the OAuth2 client_credentials flow — no user auth required.
+    Returns None on failure.
+    """
+    cached = cache.get(_TWITCH_APP_TOKEN_CACHE_KEY)
+    if cached:
+        return str(cached)
+
+    try:
+        body = urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "client_credentials",
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(TWITCH_TOKEN_URL, data=body, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = json.loads(resp.read())
+        token = str(payload.get("access_token", "")).strip()
+        if not token:
+            logger.warning("Twitch app token response missing access_token")
+            return None
+        # Honour the expires_in from the response when available.
+        expires_in = int(payload.get("expires_in") or _TWITCH_APP_TOKEN_CACHE_TTL)
+        ttl = min(expires_in - 300, _TWITCH_APP_TOKEN_CACHE_TTL)  # 5-min safety margin
+        cache.set(_TWITCH_APP_TOKEN_CACHE_KEY, token, max(ttl, 60))
+        logger.debug("Fetched new Twitch app access token, expires_in=%d", expires_in)
+        return token
+    except Exception:
+        logger.warning("Failed to fetch Twitch app access token", exc_info=True)
+        return None
 
 
 def _fetch_twitch_channel_data(channels: list[str]) -> dict[str, dict]:
     """Fetch channel profile and live-stream data from the Twitch Helix API.
 
+    Uses the App Access Token (client credentials) so no bot user token is required.
     Returns a mapping of login -> enriched dict, or empty dict on failure.
     """
-    client_id: str = getattr(settings, "TWITCH_CLIENT_ID", "")
-    token: str = getattr(settings, "TWITCH_OAUTH_TOKEN", "")
-    # TwitchIO stores the token without the oauth: prefix, but strip it just in case.
-    if token.lower().startswith("oauth:"):
-        token = token[6:]
-    if not client_id or not token:
+    client_id: str = getattr(settings, "TWITCH_CLIENT_ID", "").strip()
+    client_secret: str = getattr(settings, "TWITCH_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
         logger.debug(
-            "Twitch channel enrichment skipped: TWITCH_CLIENT_ID=%s TWITCH_OAUTH_TOKEN=%s",
+            "Twitch channel enrichment skipped: TWITCH_CLIENT_ID=%s TWITCH_CLIENT_SECRET=%s",
             "set" if client_id else "unset",
-            "set" if token else "unset",
+            "set" if client_secret else "unset",
         )
+        return {}
+
+    token = _get_app_access_token(client_id, client_secret)
+    if not token:
         return {}
 
     headers = {

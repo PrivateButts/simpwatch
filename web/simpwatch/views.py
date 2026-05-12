@@ -328,17 +328,16 @@ def _fetch_twitch_channel_data(channels: list[str]) -> dict[str, dict]:
     if not token:
         return {}
 
-    headers = {
-        "Client-Id": client_id,
-        "Authorization": f"Bearer {token}",
-    }
-
     user_params = "&".join(f"login={ch}" for ch in channels)
     stream_params = "&".join(f"user_login={ch}" for ch in channels)
     user_url = f"https://api.twitch.tv/helix/users?{user_params}"
     stream_url = f"https://api.twitch.tv/helix/streams?{stream_params}"
 
-    try:
+    def _load_helix_payloads(current_token: str) -> tuple[dict, dict]:
+        headers = {
+            "Client-Id": client_id,
+            "Authorization": f"Bearer {current_token}",
+        }
         req = urllib.request.Request(user_url, headers=headers)
         with urllib.request.urlopen(req, timeout=5) as resp:
             user_data = json.loads(resp.read())
@@ -346,6 +345,35 @@ def _fetch_twitch_channel_data(channels: list[str]) -> dict[str, dict]:
         req = urllib.request.Request(stream_url, headers=headers)
         with urllib.request.urlopen(req, timeout=5) as resp:
             stream_data = json.loads(resp.read())
+
+        return user_data, stream_data
+
+    try:
+        user_data, stream_data = _load_helix_payloads(token)
+    except urllib.error.HTTPError as exc:
+        # Cached app token can become invalid before TTL (revocation/rotation).
+        # Purge and fetch a fresh token once before giving up.
+        if exc.code in (401, 403):
+            logger.warning(
+                "Twitch Helix auth failed with cached app token (status=%s); refreshing app token cache",
+                exc.code,
+            )
+            cache.delete(_TWITCH_APP_TOKEN_CACHE_KEY)
+            fresh_token = _get_app_access_token(client_id, client_secret)
+            if fresh_token:
+                try:
+                    user_data, stream_data = _load_helix_payloads(fresh_token)
+                except Exception:
+                    logger.warning(
+                        "Failed to fetch Twitch channel data after refreshing app token",
+                        exc_info=True,
+                    )
+                    return {}
+            else:
+                return {}
+        else:
+            logger.warning("Failed to fetch Twitch channel data", exc_info=True)
+            return {}
     except Exception:
         logger.warning("Failed to fetch Twitch channel data", exc_info=True)
         return {}

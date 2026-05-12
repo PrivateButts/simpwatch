@@ -39,6 +39,7 @@ TWITCH_AUTHORIZE_URL = "https://id.twitch.tv/oauth2/authorize"
 TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 TWITCH_VALIDATE_URL = "https://id.twitch.tv/oauth2/validate"
 TWITCH_ONBOARD_STATE_CACHE_PREFIX = "twitch:onboard:state:"
+TWITCH_BOT_REQUIRED_SCOPES = ["user:bot", "user:read:chat", "user:write:chat"]
 
 
 WINDOWS = {
@@ -573,7 +574,13 @@ def twitch_bot_token_start(request):
     ttl = getattr(settings, "TWITCH_ONBOARD_STATE_TTL_SECONDS", 600)
     cache.set(state_cache_key, {"redirect_uri": redirect_uri}, ttl)
 
-    scopes = getattr(settings, "TWITCH_BROADCASTER_TOKEN_SCOPES", "channel:bot").split()
+    scopes = getattr(
+        settings,
+        "TWITCH_BOT_TOKEN_SCOPES",
+        " ".join(TWITCH_BOT_REQUIRED_SCOPES),
+    ).split()
+    if not scopes:
+        scopes = list(TWITCH_BOT_REQUIRED_SCOPES)
     oauth_url = (
         f"https://id.twitch.tv/oauth2/authorize"
         f"?client_id={urllib.parse.quote(client_id)}"
@@ -652,10 +659,24 @@ def twitch_bot_token_callback(request):
     bot_username = str(validation.get("login", "")).strip().lower()
     bot_user_id = str(validation.get("user_id", "")).strip()
     scopes = validation.get("scopes", []) or []
+    missing_scopes = sorted(set(TWITCH_BOT_REQUIRED_SCOPES) - set(scopes))
     if not bot_username or not bot_user_id:
         return JsonResponse(
             {"ok": False, "error": "token_validation_failed", "detail": "Validation response missing user identity."},
             status=502,
+        )
+    if missing_scopes:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "insufficient_scopes",
+                "detail": (
+                    "Bot token is missing required EventSub scopes: "
+                    + ", ".join(missing_scopes)
+                ),
+                "missing_scopes": missing_scopes,
+            },
+            status=400,
         )
 
     expires_in = int(token_data.get("expires_in") or 0)

@@ -366,6 +366,7 @@ class BotTokenSetupTests(TestCase):
             self.assertIn("client_id=", payload["oauth_url"])
             self.assertIn("scope=", payload["oauth_url"])
             self.assertIn("state=", payload["oauth_url"])
+            self.assertIn("scope=user%3Abot%20user%3Aread%3Achat%20user%3Awrite%3Achat", payload["oauth_url"])
             self.assertIn(
                 "redirect_uri=http%3A//localhost/oauth/twitch/bot/callback",
                 payload["oauth_url"],
@@ -429,3 +430,37 @@ class BotTokenSetupTests(TestCase):
         payload = response.json()
         self.assertFalse(payload.get("ok"))
         self.assertEqual(payload.get("error"), "invalid_state")
+
+    @override_settings(
+        TWITCH_CLIENT_ID="test-client",
+        TWITCH_CLIENT_SECRET="test-secret",
+        TWITCH_TOKEN_REDIRECT_URI="http://localhost/oauth/twitch/callback",
+        TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
+    )
+    @patch("simpwatch.views._exchange_twitch_code_for_tokens")
+    @patch("simpwatch.views._validate_twitch_access_token")
+    def test_bot_token_callback_rejects_missing_required_scopes(self, mock_validate, mock_exchange):
+        mock_exchange.return_value = {
+            "access_token": "bot-access-token-xyz",
+            "refresh_token": "bot-refresh-token-abc",
+            "expires_in": 3600,
+        }
+        mock_validate.return_value = {
+            "login": "simpbot",
+            "user_id": "9999",
+            "scopes": ["channel:bot"],
+        }
+
+        state = "test-state-missing-scopes"
+        cache.set(f"twitch:onboard:state:bot:{state}", True, 600)
+
+        response = self.client.get(
+            "/oauth/twitch/bot/callback",
+            {"code": "auth-code-123", "state": state},
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertFalse(payload.get("ok"))
+        self.assertEqual(payload.get("error"), "insufficient_scopes")
+        self.assertIn("user:bot", payload.get("missing_scopes", []))
+        self.assertFalse(TwitchBotGrant.objects.filter(bot_username="simpbot").exists())

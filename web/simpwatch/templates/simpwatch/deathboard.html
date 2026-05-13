@@ -372,13 +372,13 @@
       font-size: 0.88rem;
     }
 
-    @media (max-width: 820px) {
-          @media (max-width: 1200px) {
-            .grid {
-              grid-template-columns: 1.6fr 1.2fr;
-            }
-          }
+    @media (max-width: 1200px) {
+      .grid {
+        grid-template-columns: 1.6fr 1.2fr;
+      }
+    }
 
+    @media (max-width: 820px) {
       .grid {
         grid-template-columns: 1fr;
       }
@@ -438,22 +438,22 @@
           </div>
           {% empty %}
           <p>No death events yet.</p>
-
-                <article class="panel">
-                  <h2>Most Lethal Game</h2>
-                  <ol>
-                    {% for game in most_lethal_games %}
-                    <li>
-                      <span>{{ game.game_name }}</span>
-                      <span class="count">{{ game.total_deaths }} death{% if game.total_deaths != 1 %}s{% endif %}</span>
-                    </li>
-                    {% empty %}
-                    <li>No deaths logged yet.</li>
-                    {% endfor %}
-                  </ol>
-                </article>
           {% endfor %}
         </div>
+      </article>
+
+      <article class="panel">
+        <h2>Most Lethal Game</h2>
+        <ol>
+          {% for game in most_lethal_games %}
+          <li>
+            <span>{{ game.game_name }}</span>
+            <span class="count">{{ game.total_deaths }} death{% if game.total_deaths != 1 %}s{% endif %}</span>
+          </li>
+          {% empty %}
+          <li>No deaths logged yet.</li>
+          {% endfor %}
+        </ol>
       </article>
     </section>
 

@@ -70,10 +70,17 @@ _REPLY_GRANT_CACHE_SECONDS = int(os.getenv("TWITCH_REPLY_GRANT_CACHE_SECONDS", "
 _TWITCH_APP_TOKEN_CACHE_TTL_SECONDS = int(
     os.getenv("TWITCH_APP_TOKEN_CACHE_TTL_SECONDS", "3000")
 )
+_TWITCH_CHANNEL_GAME_CACHE_TTL_SECONDS = int(
+    os.getenv("TWITCH_CHANNEL_GAME_CACHE_TTL_SECONDS", "45")
+)
 _twitch_app_token_cache: dict[str, str | float] = {
     "token": "",
     "expires_at": 0.0,
 }
+# Maps channel_login -> {"user_id": str}  (permanent: user_id never changes)
+_twitch_channel_user_id_cache: dict[str, str] = {}
+# Maps channel_login -> {"game_id": str, "game_name": str, "expires_at": float}
+_twitch_channel_game_cache: dict[str, dict] = {}
 
 from simpwatch.models import Identity, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant  # noqa: E402
 
@@ -314,22 +321,33 @@ def _fetch_twitch_channel_game(channel_login: str) -> tuple[str, str]:
     if not login:
         return "", ""
 
-    user_url = f"https://api.twitch.tv/helix/users?{urllib.parse.urlencode({'login': login})}"
-    try:
-        req = urllib.request.Request(user_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            user_data = json.loads(resp.read().decode("utf-8"))
-    except Exception:
-        logger.debug("Failed fetching Twitch user for channel=%s", login, exc_info=True)
-        return "", ""
-
-    users = user_data.get("data", [])
-    if not users:
-        return "", ""
-
-    user_id = str(users[0].get("id", "")).strip()
+    # Resolve user_id (cached permanently — user_id never changes for a login)
+    user_id = _twitch_channel_user_id_cache.get(login, "")
     if not user_id:
-        return "", ""
+        user_url = f"https://api.twitch.tv/helix/users?{urllib.parse.urlencode({'login': login})}"
+        try:
+            req = urllib.request.Request(user_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                user_data = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            logger.debug("Failed fetching Twitch user for channel=%s", login, exc_info=True)
+            return "", ""
+
+        users = user_data.get("data", [])
+        if not users:
+            return "", ""
+
+        user_id = str(users[0].get("id", "")).strip()
+        if not user_id:
+            return "", ""
+
+        _twitch_channel_user_id_cache[login] = user_id
+
+    # Resolve current game (cached for a short TTL to avoid hammering Helix)
+    now = time.time()
+    cached_game = _twitch_channel_game_cache.get(login)
+    if cached_game and now < cached_game.get("expires_at", 0.0):
+        return cached_game["game_id"], cached_game["game_name"]
 
     stream_url = (
         f"https://api.twitch.tv/helix/streams?"
@@ -345,10 +363,22 @@ def _fetch_twitch_channel_game(channel_login: str) -> tuple[str, str]:
 
     streams = stream_data.get("data", [])
     if not streams:
+        _twitch_channel_game_cache[login] = {
+            "game_id": "",
+            "game_name": "",
+            "expires_at": now + _TWITCH_CHANNEL_GAME_CACHE_TTL_SECONDS,
+        }
         return "", ""
 
     stream = streams[0]
-    return str(stream.get("game_id", "")).strip(), str(stream.get("game_name", "")).strip()
+    game_id = str(stream.get("game_id", "")).strip()
+    game_name = str(stream.get("game_name", "")).strip()
+    _twitch_channel_game_cache[login] = {
+        "game_id": game_id,
+        "game_name": game_name,
+        "expires_at": now + _TWITCH_CHANNEL_GAME_CACHE_TTL_SECONDS,
+    }
+    return game_id, game_name
 
 
 def _has_active_broadcaster_grant(username: str) -> bool:

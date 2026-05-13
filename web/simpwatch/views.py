@@ -13,7 +13,7 @@ from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.db.models import Sum
 from django.http import JsonResponse
 from django.http import HttpResponse
@@ -168,7 +168,8 @@ def _death_game_options() -> list[dict]:
     game_rows = (
         SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
         .values("game_id", "game_name")
-        .order_by("-created_at")
+        .annotate(last_seen=Max("created_at"))
+        .order_by("-last_seen")
     )
     seen_game_ids: set[str] = set()
     has_unknown = False
@@ -266,7 +267,6 @@ def _games_by_death_count() -> list[dict]:
 
 
 def _watched_channels() -> list[str]:
-
     return list(getattr(settings, "TWITCH_CHANNELS", []))
 
 

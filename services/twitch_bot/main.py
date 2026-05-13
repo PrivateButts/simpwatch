@@ -67,6 +67,13 @@ _TWITCH_REPLY_CHANNELS = {
     if c.strip()
 }
 _REPLY_GRANT_CACHE_SECONDS = int(os.getenv("TWITCH_REPLY_GRANT_CACHE_SECONDS", "30"))
+_TWITCH_APP_TOKEN_CACHE_TTL_SECONDS = int(
+    os.getenv("TWITCH_APP_TOKEN_CACHE_TTL_SECONDS", "3000")
+)
+_twitch_app_token_cache: dict[str, str | float] = {
+    "token": "",
+    "expires_at": 0.0,
+}
 
 from simpwatch.models import Identity, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant  # noqa: E402
 
@@ -246,6 +253,102 @@ def _refresh_bot_token(
 
     logger.info("Successfully refreshed bot access token via refresh_token")
     return new_access_token, new_refresh_token
+
+
+def _get_twitch_app_access_token() -> str:
+    now = time.time()
+    cached_token = str(_twitch_app_token_cache.get("token") or "")
+    cached_expires_at = float(_twitch_app_token_cache.get("expires_at") or 0.0)
+    if cached_token and now < cached_expires_at:
+        return cached_token
+
+    client_id = os.getenv("TWITCH_CLIENT_ID", "").strip()
+    client_secret = os.getenv("TWITCH_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        return ""
+
+    try:
+        body = urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "client_credentials",
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            "https://id.twitch.tv/oauth2/token",
+            data=body,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        logger.warning("Failed to fetch Twitch app token for death command", exc_info=True)
+        return ""
+
+    token = str(payload.get("access_token", "")).strip()
+    if not token:
+        return ""
+
+    expires_in = int(payload.get("expires_in") or _TWITCH_APP_TOKEN_CACHE_TTL_SECONDS)
+    ttl = min(expires_in - 300, _TWITCH_APP_TOKEN_CACHE_TTL_SECONDS)
+    _twitch_app_token_cache["token"] = token
+    _twitch_app_token_cache["expires_at"] = now + max(ttl, 60)
+    return token
+
+
+def _fetch_twitch_channel_game(channel_login: str) -> tuple[str, str]:
+    client_id = os.getenv("TWITCH_CLIENT_ID", "").strip()
+    if not client_id:
+        return "", ""
+
+    token = _get_twitch_app_access_token()
+    if not token:
+        return "", ""
+
+    headers = {
+        "Client-Id": client_id,
+        "Authorization": f"Bearer {token}",
+    }
+    login = channel_login.strip().lower()
+    if not login:
+        return "", ""
+
+    user_url = f"https://api.twitch.tv/helix/users?{urllib.parse.urlencode({'login': login})}"
+    try:
+        req = urllib.request.Request(user_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            user_data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        logger.debug("Failed fetching Twitch user for channel=%s", login, exc_info=True)
+        return "", ""
+
+    users = user_data.get("data", [])
+    if not users:
+        return "", ""
+
+    user_id = str(users[0].get("id", "")).strip()
+    if not user_id:
+        return "", ""
+
+    stream_url = (
+        f"https://api.twitch.tv/helix/streams?"
+        f"{urllib.parse.urlencode({'user_id': user_id})}"
+    )
+    try:
+        req = urllib.request.Request(stream_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            stream_data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        logger.debug("Failed fetching Twitch stream for channel=%s", login, exc_info=True)
+        return "", ""
+
+    streams = stream_data.get("data", [])
+    if not streams:
+        return "", ""
+
+    stream = streams[0]
+    return str(stream.get("game_id", "")).strip(), str(stream.get("game_name", "")).strip()
 
 
 def _has_active_broadcaster_grant(username: str) -> bool:
@@ -707,12 +810,20 @@ class TwitchSimpBot(commands.Bot):
         lowered = content.lower()
         _is_simp = lowered == "!simp" or lowered.startswith("!simp ")
         _is_bamder = lowered == "!bamder" or lowered.startswith("!bamder ")
-        if not _is_simp and not _is_bamder:
+        _is_death = (
+            lowered == "!death"
+            or lowered.startswith("!death ")
+            or lowered == "!died"
+            or lowered.startswith("!died ")
+        )
+        if not _is_simp and not _is_bamder and not _is_death:
             return
 
         _stats["commands_seen"] += 1
         if _is_bamder:
             twitch_commands_total.labels("bamder").inc()
+        elif _is_death:
+            twitch_commands_total.labels("death").inc()
         else:
             twitch_commands_total.labels("simp").inc()
 
@@ -722,12 +833,23 @@ class TwitchSimpBot(commands.Bot):
             username=self._message_author_name(message),
             display_name=self._message_display_name(message),
         )
+        game_id = ""
+        game_name = ""
 
         try:
             if _is_bamder:
                 target_person = await _db_call(get_or_create_named_person, "pamder")
                 reason = parse_twitch_bamder_reason(content)
                 event_type = str(SimpEvent.EventType.BAMDER)
+            elif _is_death:
+                broadcaster = self._message_channel_name(message)
+                target_person = await _db_call(get_or_create_twitch_target, broadcaster)
+                reason = parse_twitch_bamder_reason(content)
+                event_type = str(SimpEvent.EventType.DEATH)
+                game_id, game_name = await asyncio.to_thread(
+                    _fetch_twitch_channel_game,
+                    broadcaster,
+                )
             else:
                 parts = content.split()
                 if len(parts) > 1 and parts[1].startswith("@"):
@@ -751,6 +873,8 @@ class TwitchSimpBot(commands.Bot):
                 event_type=event_type,
                 source=self._message_channel_name(message),
                 reason=reason,
+                game_id=game_id,
+                game_name=game_name,
                 raw_content=content,
                 message_id=str(getattr(message, "id", "")),
                 dedupe_key=f"twitch:{getattr(message, 'id', '')}",
@@ -760,13 +884,15 @@ class TwitchSimpBot(commands.Bot):
                 twitch_events_registered_total.labels(event_type).inc()
                 logger.info(
                     "event registered platform=twitch type=%s actor=%s target=%s "
-                    "channel=%s event_id=%d points=%d",
+                    "channel=%s event_id=%d points=%d game_id=%s game=%s",
                     event_type,
                     actor_input.username,
                     target_person.name,
                     self._message_channel_name(message),
                     event.id,
                     event.points,
+                    getattr(event, "game_id", ""),
+                    getattr(event, "game_name", ""),
                 )
                 if self._message_channel_name(message) in self._reply_channels:
                     if event_type == str(SimpEvent.EventType.BAMDER):
@@ -778,6 +904,12 @@ class TwitchSimpBot(commands.Bot):
                             f"{_ordinal(this_week)} time this week, "
                             f"{_ordinal(total)} time total. "
                             f"Someone oughta do something about that..."
+                        )
+                    elif event_type == str(SimpEvent.EventType.DEATH):
+                        game_label = event.game_name or "Unknown"
+                        await self._send_message(
+                            message,
+                            f"Death logged for {target_person.name} in {game_label}.",
                         )
                     else:
                         score, rank = await _db_call(get_score_and_rank_for_person, target_person)
@@ -795,6 +927,8 @@ class TwitchSimpBot(commands.Bot):
                 _stats["cooldowns"] += 1
                 if _is_bamder:
                     twitch_cooldowns_total.labels("bamder").inc()
+                elif _is_death:
+                    twitch_cooldowns_total.labels("death").inc()
                 else:
                     twitch_cooldowns_total.labels("simp").inc()
                 logger.debug(

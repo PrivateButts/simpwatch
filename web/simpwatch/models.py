@@ -40,6 +40,7 @@ class SimpEvent(models.Model):
     class EventType(models.TextChoices):
         SIMP = "simp", "Simp"
         BAMDER = "bamder", "Bamder"
+        DEATH = "death", "Death"
 
     class Platform(models.TextChoices):
         TWITCH = "twitch", "Twitch"
@@ -61,6 +62,8 @@ class SimpEvent(models.Model):
     points = models.IntegerField(default=1)
     raw_content = models.TextField(blank=True)
     reason = models.TextField(blank=True)
+    game_id = models.CharField(max_length=255, blank=True)
+    game_name = models.CharField(max_length=255, blank=True)
     message_id = models.CharField(max_length=255, blank=True)
     dedupe_key = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

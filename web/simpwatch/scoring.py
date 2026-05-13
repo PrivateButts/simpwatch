@@ -10,6 +10,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from .cache import get_cached_scoring_config
 from .models import Identity, Person, ScoreAdjustment, ScoringConfig, SimpEvent
 
 
@@ -121,13 +122,12 @@ def get_or_create_named_person(name: str) -> Person:
 
 
 def get_scoring_config() -> ScoringConfig:
-    config = ScoringConfig.objects.first()
-    if config:
-        return config
-    return ScoringConfig.objects.create(
-        cooldown_seconds=getattr(settings, "SIMP_DEFAULT_COOLDOWN_SECONDS", 0),
-        default_points=getattr(settings, "SIMP_DEFAULT_POINTS", 1),
-    )
+    """Get the ScoringConfig singleton (cached).
+
+    Note: Use get_cached_scoring_config() directly if you don't need the
+    legacy function name.
+    """
+    return get_cached_scoring_config()
 
 
 def _cooldown_active(

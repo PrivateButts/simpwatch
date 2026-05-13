@@ -18,6 +18,7 @@ from django.db.models import Sum
 from django.http import JsonResponse
 from django.http import HttpResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.cache import cache_control
 from django.shortcuts import redirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -772,6 +773,7 @@ def twitch_bot_token_callback(request):
     return JsonResponse({"ok": True, "bot_username": bot_username, "stored": True})
 
 
+@cache_control(public=True, max_age=15)
 def leaderboard_page(request):
     started = time.monotonic()
     window = request.GET.get("window", "all")
@@ -808,6 +810,7 @@ def leaderboard_page(request):
     return response
 
 
+@cache_control(public=True, max_age=15)
 def leaderboard_api(request):
     started = time.monotonic()
     window = request.GET.get("window", "all")

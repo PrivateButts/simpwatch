@@ -70,6 +70,10 @@ _REPLY_GRANT_CACHE_SECONDS = int(os.getenv("TWITCH_REPLY_GRANT_CACHE_SECONDS", "
 
 from simpwatch.models import Identity, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant  # noqa: E402
 
+from simpwatch.cache import (  # noqa: E402
+    get_cached_broadcaster_grant,
+    get_cached_bot_grant,
+)
 from simpwatch.command_parsing import (  # noqa: E402
     parse_bot_simp_args,
     parse_bot_mention_command,
@@ -249,14 +253,12 @@ def _refresh_bot_token(
 
 
 def _has_active_broadcaster_grant(username: str) -> bool:
-    return TwitchBroadcasterGrant.objects.filter(
-        username=username,
-        is_active=True,
-    ).exists()
+    grant = get_cached_broadcaster_grant(username)
+    return grant is not None
 
 
 def _get_bot_grant_from_db() -> tuple[str, str, str, str] | None:
-    """Fetch active bot grant from database.
+    """Fetch active bot grant from database (cached).
 
     Returns (username, user_id, access_token, refresh_token) or None if not found.
     """
@@ -266,7 +268,7 @@ def _get_bot_grant_from_db() -> tuple[str, str, str, str] | None:
         from cryptography.fernet import Fernet
         from django.conf import settings
 
-        grant = TwitchBotGrant.objects.filter(is_active=True).first()
+        grant = get_cached_bot_grant()
         if not grant:
             return None
 

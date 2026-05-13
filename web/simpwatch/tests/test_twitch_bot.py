@@ -308,6 +308,15 @@ class ProcessMessageSimpTests(SimpleTestCase):
         mock_register.assert_not_called()
         self.assertEqual(_stats["commands_seen"], 0)
 
+    async def test_simpcount_command_is_ignored(self):
+        """!simpcount should not trigger the simp handler (word boundary check)."""
+        bot = _make_bot()
+        msg = _message("!simpcount")
+        with patch("services.twitch_bot.main.register_simp") as mock_register:
+            await bot._process_message(msg, msg.content)
+        mock_register.assert_not_called()
+        self.assertEqual(_stats["commands_seen"], 0)
+
 
 class ProcessMessageBamderTests(SimpleTestCase):
     """Tests for the !bamder path inside _process_message."""

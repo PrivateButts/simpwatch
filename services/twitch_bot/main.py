@@ -705,11 +705,13 @@ class TwitchSimpBot(commands.Bot):
             return
 
         lowered = content.lower()
-        if not lowered.startswith("!simp") and not lowered.startswith("!bamder"):
+        _is_simp = lowered == "!simp" or lowered.startswith("!simp ")
+        _is_bamder = lowered == "!bamder" or lowered.startswith("!bamder ")
+        if not _is_simp and not _is_bamder:
             return
 
         _stats["commands_seen"] += 1
-        if lowered.startswith("!bamder"):
+        if _is_bamder:
             twitch_commands_total.labels("bamder").inc()
         else:
             twitch_commands_total.labels("simp").inc()
@@ -722,7 +724,7 @@ class TwitchSimpBot(commands.Bot):
         )
 
         try:
-            if lowered.startswith("!bamder"):
+            if _is_bamder:
                 target_person = await _db_call(get_or_create_named_person, "pamder")
                 reason = parse_twitch_bamder_reason(content)
                 event_type = str(SimpEvent.EventType.BAMDER)
@@ -791,7 +793,7 @@ class TwitchSimpBot(commands.Bot):
                             )
             else:
                 _stats["cooldowns"] += 1
-                if lowered.startswith("!bamder"):
+                if _is_bamder:
                     twitch_cooldowns_total.labels("bamder").inc()
                 else:
                     twitch_cooldowns_total.labels("simp").inc()

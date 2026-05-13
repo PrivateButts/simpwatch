@@ -80,7 +80,7 @@ _twitch_app_token_cache: dict[str, str | float] = {
 # Maps channel_login -> {"user_id": str}  (permanent: user_id never changes)
 _twitch_channel_user_id_cache: dict[str, str] = {}
 # Maps channel_login -> {"game_id": str, "game_name": str, "expires_at": float}
-_twitch_channel_game_cache: dict[str, dict] = {}
+_twitch_channel_game_cache: dict[str, dict[str, str | float]] = {}
 
 from simpwatch.models import Identity, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant  # noqa: E402
 
@@ -347,7 +347,7 @@ def _fetch_twitch_channel_game(channel_login: str) -> tuple[str, str]:
     now = time.time()
     cached_game = _twitch_channel_game_cache.get(login)
     if cached_game and now < cached_game.get("expires_at", 0.0):
-        return cached_game["game_id"], cached_game["game_name"]
+        return str(cached_game.get("game_id", "")), str(cached_game.get("game_name", ""))
 
     stream_url = (
         f"https://api.twitch.tv/helix/streams?"

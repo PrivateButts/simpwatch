@@ -193,7 +193,7 @@ def get_leaderboard_entries(window: str = "all") -> list[dict]:
     delta = _WINDOW_DELTAS.get(window)
     since = timezone.now() - delta if delta is not None else None
 
-    event_qs = SimpEvent.objects.all()
+    event_qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.SIMP)
     adjustment_qs = ScoreAdjustment.objects.all()
     if since is not None:
         event_qs = event_qs.filter(created_at__gte=since)

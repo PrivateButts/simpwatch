@@ -150,6 +150,20 @@ class LeaderboardQueryTests(TestCase):
     def test_get_leaderboard_entries_empty(self):
         self.assertEqual(get_leaderboard_entries(), [])
 
+    def test_get_leaderboard_entries_excludes_bamder_events(self):
+        pamder = Person.objects.create(name="pamder")
+        actor = self._actor("a1", "c1")
+        register_simp(
+            actor=actor,
+            target=pamder,
+            platform=str(Identity.Platform.TWITCH),
+            source="chan",
+            event_type=str(SimpEvent.EventType.BAMDER),
+            message_id="bam1",
+            dedupe_key="twitch:bam1",
+        )
+        self.assertEqual(get_leaderboard_entries(), [])
+
     def test_get_person_score_and_rank_found(self):
         p1 = Person.objects.create(name="top")
         Identity.objects.create(

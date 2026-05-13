@@ -7,6 +7,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from django.db import close_old_connections
+from django.db.utils import InterfaceError, OperationalError
 from twitchio.exceptions import HTTPException
 
 from twitchio import eventsub
@@ -30,6 +32,7 @@ _stats: dict[str, int] = {
     "cooldowns": 0,
     "errors": 0,
 }
+_db_consecutive_failures = 0
 
 # How long (seconds) with no incoming messages before the watchdog forces a reconnect.
 _WATCHDOG_TIMEOUT_SECONDS = int(os.getenv("TWITCH_WATCHDOG_TIMEOUT", "300"))
@@ -37,6 +40,16 @@ _WATCHDOG_TIMEOUT_SECONDS = int(os.getenv("TWITCH_WATCHDOG_TIMEOUT", "300"))
 _STATS_INTERVAL_SECONDS = int(os.getenv("TWITCH_STATS_INTERVAL", "300"))
 # How long (seconds) to wait for database operations before timing out.
 _DB_OPERATION_TIMEOUT_SECONDS = int(os.getenv("TWITCH_DB_TIMEOUT", "10"))
+# How many times to retry a DB operation after transient disconnect failures.
+_DB_OPERATION_RETRIES = int(os.getenv("TWITCH_DB_RETRIES", "1"))
+# Base backoff (seconds) before retrying transient DB disconnects.
+_DB_RETRY_BACKOFF_SECONDS = float(
+    os.getenv("TWITCH_DB_RETRY_BACKOFF_SECONDS", "0.5")
+)
+# Hard stop after this many consecutive DB call failures (0 disables fail-fast exit).
+_DB_MAX_CONSECUTIVE_FAILURES = int(
+    os.getenv("TWITCH_DB_MAX_CONSECUTIVE_FAILURES", "10")
+)
 # How many reconnect attempts the watchdog should try before forcing process restart.
 _WATCHDOG_MAX_RECONNECT_ATTEMPTS = int(
     os.getenv("TWITCH_WATCHDOG_MAX_RECONNECT_ATTEMPTS", "3")
@@ -85,28 +98,79 @@ from simpwatch.scoring import (  # noqa: E402
 )
 
 
+def _run_db_operation(coro_func, *args, **kwargs):
+    """Run one DB operation with connection hygiene for worker threads."""
+    close_old_connections()
+    try:
+        return coro_func(*args, **kwargs)
+    finally:
+        close_old_connections()
+
+
 async def _db_call(coro_func, *args, **kwargs):
     """Wrap a sync_to_async call with timeout and error handling."""
-    try:
-        result = await asyncio.wait_for(
-            sync_to_async(coro_func)(*args, **kwargs),
-            timeout=_DB_OPERATION_TIMEOUT_SECONDS,
-        )
-        return result
-    except asyncio.TimeoutError:
-        _stats["errors"] += 1
-        twitch_errors_total.labels("db_timeout").inc()
-        logger.error(
-            "Database operation timed out after %ds: %s",
-            _DB_OPERATION_TIMEOUT_SECONDS,
-            coro_func.__name__,
-        )
-        raise
-    except Exception as e:
-        _stats["errors"] += 1
-        twitch_errors_total.labels("db_exception").inc()
-        logger.exception("Database operation failed in %s", coro_func.__name__)
-        raise
+    global _db_consecutive_failures
+
+    def _exit_if_db_unhealthy() -> None:
+        if (
+            _DB_MAX_CONSECUTIVE_FAILURES > 0
+            and _db_consecutive_failures >= _DB_MAX_CONSECUTIVE_FAILURES
+        ):
+            logger.critical(
+                "Database failures reached threshold (%d). "
+                "Exiting process for container restart.",
+                _DB_MAX_CONSECUTIVE_FAILURES,
+            )
+            clear_heartbeat()
+            os._exit(1)
+
+    for attempt in range(_DB_OPERATION_RETRIES + 1):
+        try:
+            result = await asyncio.wait_for(
+                sync_to_async(_run_db_operation)(coro_func, *args, **kwargs),
+                timeout=_DB_OPERATION_TIMEOUT_SECONDS,
+            )
+            _db_consecutive_failures = 0
+            return result
+        except asyncio.TimeoutError:
+            _db_consecutive_failures += 1
+            _stats["errors"] += 1
+            twitch_errors_total.labels("db_timeout").inc()
+            logger.error(
+                "Database operation timed out after %ds: %s",
+                _DB_OPERATION_TIMEOUT_SECONDS,
+                coro_func.__name__,
+            )
+            _exit_if_db_unhealthy()
+            raise
+        except (OperationalError, InterfaceError) as exc:
+            if attempt < _DB_OPERATION_RETRIES:
+                twitch_errors_total.labels("db_retry").inc()
+                backoff_seconds = _DB_RETRY_BACKOFF_SECONDS * (2**attempt)
+                logger.warning(
+                    "Transient database error in %s; retrying (%d/%d) in %.2fs: %s",
+                    coro_func.__name__,
+                    attempt + 1,
+                    _DB_OPERATION_RETRIES,
+                    backoff_seconds,
+                    exc,
+                )
+                if backoff_seconds > 0:
+                    await asyncio.sleep(backoff_seconds)
+                continue
+            _db_consecutive_failures += 1
+            _stats["errors"] += 1
+            twitch_errors_total.labels("db_exception").inc()
+            logger.exception("Database operation failed in %s", coro_func.__name__)
+            _exit_if_db_unhealthy()
+            raise
+        except Exception:
+            _db_consecutive_failures += 1
+            _stats["errors"] += 1
+            twitch_errors_total.labels("db_exception").inc()
+            logger.exception("Database operation failed in %s", coro_func.__name__)
+            _exit_if_db_unhealthy()
+            raise
 
 
 def _ordinal(n: int) -> str:

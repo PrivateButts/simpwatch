@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import unittest
 
+from django.db.utils import OperationalError
 from django.test import SimpleTestCase
 
 _HAS_SERVICES_PACKAGE = False
@@ -23,7 +24,8 @@ for _parent in Path(__file__).resolve().parents:
 if not _HAS_SERVICES_PACKAGE:
     raise unittest.SkipTest("services package unavailable in this test runtime")
 
-from services.twitch_bot.main import TwitchSimpBot, _stats
+from services.twitch_bot.main import TwitchSimpBot, _db_call, _stats
+import services.twitch_bot.main as twitch_main
 from simpwatch.metrics import prometheus_payload
 
 
@@ -594,3 +596,75 @@ class ReplyAuthorizationTests(SimpleTestCase):
             labels={"command": "simp"},
         )
         self.assertEqual(after - before, 1.0)
+
+
+class DatabaseCallTests(SimpleTestCase):
+    def setUp(self) -> None:
+        twitch_main._db_consecutive_failures = 0
+
+    async def test_db_call_retries_transient_operational_error_once(self):
+        attempts = 0
+
+        def flaky_call() -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise OperationalError("terminating connection due to administrator command")
+            return "ok"
+
+        with patch("services.twitch_bot.main._DB_RETRY_BACKOFF_SECONDS", 0):
+            result = await _db_call(flaky_call)
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(attempts, 2)
+
+    async def test_db_call_does_not_retry_non_database_exceptions(self):
+        attempts = 0
+
+        def broken_call() -> None:
+            nonlocal attempts
+            attempts += 1
+            raise RuntimeError("boom")
+
+        with self.assertRaises(RuntimeError):
+            await _db_call(broken_call)
+
+        self.assertEqual(attempts, 1)
+
+    async def test_db_call_uses_backoff_before_retry(self):
+        attempts = 0
+
+        def flaky_call() -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise OperationalError("terminating connection due to administrator command")
+            return "ok"
+
+        with (
+            patch("services.twitch_bot.main._DB_RETRY_BACKOFF_SECONDS", 0.25),
+            patch("services.twitch_bot.main.asyncio.sleep", AsyncMock()) as mock_sleep,
+        ):
+            result = await _db_call(flaky_call)
+
+        self.assertEqual(result, "ok")
+        mock_sleep.assert_awaited_once_with(0.25)
+
+    async def test_db_call_exits_after_max_consecutive_failures(self):
+        def broken_call() -> None:
+            raise OperationalError("db down")
+
+        with (
+            patch("services.twitch_bot.main._DB_OPERATION_RETRIES", 0),
+            patch("services.twitch_bot.main._DB_MAX_CONSECUTIVE_FAILURES", 2),
+            patch("services.twitch_bot.main.clear_heartbeat") as mock_clear,
+            patch("services.twitch_bot.main.os._exit", side_effect=SystemExit(1)) as mock_exit,
+        ):
+            with self.assertRaises(OperationalError):
+                await _db_call(broken_call)
+
+            with self.assertRaises(SystemExit):
+                await _db_call(broken_call)
+
+        mock_clear.assert_called_once()
+        mock_exit.assert_called_once_with(1)

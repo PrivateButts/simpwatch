@@ -18,6 +18,10 @@
     "/^python3 -m compileall web services$/": {
       "approve": true,
       "matchCommandLine": true
+    },
+    "/^uv run pytest web/simpwatch/tests/test_twitch_bot\\.py$/": {
+      "approve": true,
+      "matchCommandLine": true
     }
   },
   "python.testing.pytestArgs": ["."],

@@ -283,8 +283,9 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("simp @username", content)
         self.assertIn("simpcheck", content)
         self.assertIn("standings", content)
-        self.assertNotIn("!death", content)
-        self.assertNotIn("!died", content)
+        self.assertIn("!deathcheck", content)
+        self.assertNotIn("<td class=\"cmd\">!death</td>", content)
+        self.assertNotIn("<td class=\"cmd\">!died</td>", content)
 
     @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_watched_channels_shown_when_configured(self):

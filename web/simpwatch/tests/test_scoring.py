@@ -6,6 +6,7 @@ from simpwatch.models import Identity, Person, ScoreAdjustment, SimpEvent
 from simpwatch.scoring import (
     IdentityInput,
     get_bamder_counts,
+    get_death_count_for_person_in_game,
     get_leaderboard_entries,
     get_person_score_and_rank,
     merge_people,
@@ -312,3 +313,50 @@ class BamderCountsTests(TestCase):
         self._bamder(self._actor("a2", "user2"), other, "m2")
         today, this_week, total = get_bamder_counts(pamder)
         self.assertEqual(total, 1)
+
+
+class DeathCountTests(TestCase):
+    def test_get_death_count_for_person_in_game_counts_matching_game_only(self):
+        target = Person.objects.create(name="streamer")
+        actor = Identity.objects.create(
+            person=Person.objects.create(name="caller"),
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="actor-1",
+            username="caller",
+            display_name="caller",
+        )
+
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="123",
+            game_name="Hades",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="123",
+            game_name="Hades",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="456",
+            game_name="Celeste",
+            source="streamer",
+            points=1,
+        )
+
+        self.assertEqual(get_death_count_for_person_in_game(target, "123"), 2)
+        self.assertEqual(get_death_count_for_person_in_game(target, "456"), 1)
+        self.assertEqual(get_death_count_for_person_in_game(target, "999"), 0)

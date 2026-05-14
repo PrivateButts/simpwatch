@@ -102,6 +102,7 @@ from simpwatch.metrics import (  # noqa: E402
 from simpwatch.scoring import (  # noqa: E402
     IdentityInput,
     get_bamder_counts,
+    get_death_count_for_person_in_game,
     get_leaderboard_entries,
     get_or_create_named_person,
     get_or_create_twitch_target,
@@ -698,6 +699,32 @@ class TwitchSimpBot(commands.Bot):
             or TwitchSimpBot._message_author_name(message)
         )
 
+    async def _send_deathcheck_summary(self, message) -> None:
+        broadcaster = self._message_channel_name(message)
+        target_person = await _db_call(get_or_create_twitch_target, broadcaster)
+        game_id, game_name = await asyncio.to_thread(
+            _fetch_twitch_channel_game,
+            broadcaster,
+        )
+        if not game_id:
+            await self._send_message(
+                message,
+                f"I can't tell what game {broadcaster} is playing right now.",
+            )
+            return
+
+        death_count = await _db_call(
+            get_death_count_for_person_in_game,
+            target_person,
+            game_id,
+        )
+        game_label = game_name or "Unknown"
+        death_word = "time" if death_count == 1 else "times"
+        await self._send_message(
+            message,
+            f"{broadcaster} has died {death_count} {death_word} while playing {game_label}.",
+        )
+
     # ------------------------------------------------------------------
     # Background task management
     # ------------------------------------------------------------------
@@ -846,7 +873,8 @@ class TwitchSimpBot(commands.Bot):
             or lowered == "!died"
             or lowered.startswith("!died ")
         )
-        if not _is_simp and not _is_bamder and not _is_death:
+        _is_deathcheck = lowered == "!deathcheck" or lowered.startswith("!deathcheck ")
+        if not _is_simp and not _is_bamder and not _is_death and not _is_deathcheck:
             return
 
         _stats["commands_seen"] += 1
@@ -854,6 +882,8 @@ class TwitchSimpBot(commands.Bot):
             twitch_commands_total.labels("bamder").inc()
         elif _is_death:
             twitch_commands_total.labels("death").inc()
+        elif _is_deathcheck:
+            twitch_commands_total.labels("deathcheck").inc()
         else:
             twitch_commands_total.labels("simp").inc()
 
@@ -880,6 +910,9 @@ class TwitchSimpBot(commands.Bot):
                     _fetch_twitch_channel_game,
                     broadcaster,
                 )
+            elif _is_deathcheck:
+                await self._send_deathcheck_summary(message)
+                return
             else:
                 parts = content.split()
                 if len(parts) > 1 and parts[1].startswith("@"):
@@ -937,9 +970,17 @@ class TwitchSimpBot(commands.Bot):
                         )
                     elif event_type == str(SimpEvent.EventType.DEATH):
                         game_label = event.game_name or "Unknown"
+                        death_count = await _db_call(
+                            get_death_count_for_person_in_game,
+                            target_person,
+                            event.game_id,
+                        )
+                        death_word = "death" if death_count == 1 else "deaths"
+                        scope_label = f"in {game_label}" if event.game_id else "overall"
+                        count_suffix = f" That's {death_count} {death_word} {scope_label}."
                         await self._send_message(
                             message,
-                            f"Death logged for {target_person.name} in {game_label}.",
+                            f"Death logged for {target_person.name} in {game_label}." + count_suffix,
                         )
                     else:
                         score, rank = await _db_call(get_score_and_rank_for_person, target_person)
@@ -997,6 +1038,9 @@ class TwitchSimpBot(commands.Bot):
                         message,
                         f"{target_username} is ranked #{rank} with {score} point(s)."
                     )
+
+            elif command == "deathcheck":
+                await self._send_deathcheck_summary(message)
 
             elif command == "standings":
                 limit = 3

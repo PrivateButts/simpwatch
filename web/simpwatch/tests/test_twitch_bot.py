@@ -317,6 +317,17 @@ class ProcessMessageSimpTests(SimpleTestCase):
         mock_register.assert_not_called()
         self.assertEqual(_stats["commands_seen"], 0)
 
+    async def test_deathcheckcount_command_is_ignored(self):
+        """!deathcheckcount should not trigger the deathcheck handler."""
+        bot = _make_bot()
+        msg = _message("!deathcheckcount")
+        with patch(
+            "services.twitch_bot.main.get_death_count_for_person_in_game"
+        ) as mock_count:
+            await bot._process_message(msg, msg.content)
+        mock_count.assert_not_called()
+        self.assertEqual(_stats["commands_seen"], 0)
+
 
 class ProcessMessageBamderTests(SimpleTestCase):
     """Tests for the !bamder path inside _process_message."""
@@ -482,6 +493,10 @@ class ProcessMessageDeathTests(SimpleTestCase):
                 "services.twitch_bot.main._fetch_twitch_channel_game",
                 return_value=("789", "Balatro"),
             ),
+            patch(
+                "services.twitch_bot.main.get_death_count_for_person_in_game",
+                return_value=1,
+            ),
             patch("services.twitch_bot.main.register_simp", return_value=fake_event),
         ):
             await bot._process_message(msg, msg.content)
@@ -490,6 +505,65 @@ class ProcessMessageDeathTests(SimpleTestCase):
         sent: str = msg.channel.send.call_args[0][0]
         self.assertIn("Death logged", sent)
         self.assertIn("Balatro", sent)
+        self.assertIn("1 death in Balatro", sent)
+
+
+class ProcessMessageDeathCheckTests(SimpleTestCase):
+    """Tests for the !deathcheck command inside _process_message."""
+
+    def setUp(self) -> None:
+        for key in _stats:
+            _stats[key] = 0
+
+    async def test_deathcheck_reports_count_for_current_game(self):
+        bot = _make_bot()
+        msg = _message("!deathcheck", channel="streamerchan")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=SimpleNamespace(name="streamerchan"),
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "Hades"),
+            ),
+            patch(
+                "services.twitch_bot.main.get_death_count_for_person_in_game",
+                return_value=3,
+            ) as mock_count,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_count.assert_called_once()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("has died 3 times while playing Hades", sent)
+        self.assertEqual(_stats["commands_seen"], 1)
+
+    async def test_deathcheck_handles_unknown_current_game(self):
+        bot = _make_bot()
+        msg = _message("!deathcheck", channel="streamerchan")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=SimpleNamespace(name="streamerchan"),
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("", ""),
+            ),
+            patch(
+                "services.twitch_bot.main.get_death_count_for_person_in_game"
+            ) as mock_count,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_count.assert_not_called()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("can't tell what game", sent)
 
 
 class BotCommandTests(SimpleTestCase):

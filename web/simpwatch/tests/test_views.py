@@ -74,6 +74,143 @@ class LeaderboardViewTests(TestCase):
         self.assertEqual(payload["leaderboard"], [])
         self.assertEqual(payload["narc_leaderboard"], [])
 
+
+class DeathboardViewTests(TestCase):
+    def setUp(self):
+        self.target_one = Person.objects.create(name="StreamerOne")
+        self.target_two = Person.objects.create(name="StreamerTwo")
+        self.actor_person = Person.objects.create(name="Caller")
+        self.actor_identity = Identity.objects.create(
+            person=self.actor_person,
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="actor-1",
+            username="caller",
+            display_name="caller",
+        )
+
+    def test_deathboard_api_groups_by_streamer(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="100",
+            game_name="Elden Ring",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="100",
+            game_name="Elden Ring",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_two,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="200",
+            game_name="Hades",
+            source="streamer2",
+            points=1,
+        )
+
+        response = self.client.get("/api/deathboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["window"], "all")
+        self.assertEqual(payload["deathboard"][0]["name"], "StreamerOne")
+        self.assertEqual(payload["deathboard"][0]["death_count"], 2)
+        self.assertEqual(payload["deathboard"][1]["name"], "StreamerTwo")
+        self.assertEqual(payload["deathboard"][1]["death_count"], 1)
+        self.assertEqual(payload["games"][0]["game_id"], "100")
+
+    def test_deathboard_api_filters_by_game_id(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="100",
+            game_name="Elden Ring",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_two,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="200",
+            game_name="Hades",
+            source="streamer2",
+            points=1,
+        )
+
+        response = self.client.get("/api/deathboard", {"game": "100"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["selected_game_id"], "100")
+        self.assertEqual(len(payload["deathboard"]), 1)
+        self.assertEqual(payload["deathboard"][0]["name"], "StreamerOne")
+
+    def test_deathboard_api_excludes_non_death_events(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.SIMP,
+            source="streamer",
+            points=1,
+        )
+
+        response = self.client.get("/api/deathboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["deathboard"], [])
+
+    @override_settings(TWITCH_BOT_USERNAME="testbot")
+    def test_deathboard_page_renders(self):
+        cache.clear()
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="300",
+            game_name="Balatro",
+            source="streamer",
+            points=1,
+        )
+
+        response = self.client.get("/deathboard")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Death Board", content)
+        self.assertIn("Balatro", content)
+        self.assertIn("Game Filter", content)
+        self.assertIn("!death", content)
+        self.assertIn("!died", content)
+        self.assertNotIn("!simp", content)
+        self.assertNotIn("!bamder", content)
+
+    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
+    def test_deathboard_shows_watched_channels(self):
+        cache.clear()
+        response = self.client.get("/deathboard")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Watched Channels", content)
+        self.assertIn("https://twitch.tv/streamer1", content)
+        self.assertIn("https://twitch.tv/streamer2", content)
+
     def test_bamder_events_are_reported_separately(self):
         SimpEvent.objects.create(
             actor_identity=self.actor_identity,
@@ -146,6 +283,8 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("simp @username", content)
         self.assertIn("simpcheck", content)
         self.assertIn("standings", content)
+        self.assertNotIn("!death", content)
+        self.assertNotIn("!died", content)
 
     @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_watched_channels_shown_when_configured(self):

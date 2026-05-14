@@ -386,6 +386,112 @@ class ProcessMessageBamderTests(SimpleTestCase):
         msg.channel.send.assert_not_awaited()
 
 
+class ProcessMessageDeathTests(SimpleTestCase):
+    """Tests for !death and !died handling inside _process_message."""
+
+    def setUp(self) -> None:
+        for key in _stats:
+            _stats[key] = 0
+
+    async def test_death_registers_event_against_broadcaster(self):
+        bot = _make_bot()
+        msg = _message("!death", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(id=10, points=1, game_id="123", game_name="Hades")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ) as mock_target,
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "Hades"),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event) as mock_register,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_target.assert_called_once_with("streamerchan")
+        self.assertEqual(_stats["commands_seen"], 1)
+        self.assertEqual(_stats["events_registered"], 1)
+        self.assertEqual(_stats["cooldowns"], 0)
+        self.assertEqual(
+            mock_register.call_args.kwargs["event_type"],
+            "death",
+        )
+        self.assertEqual(mock_register.call_args.kwargs["game_id"], "123")
+        self.assertEqual(mock_register.call_args.kwargs["game_name"], "Hades")
+
+    async def test_died_alias_registers_death(self):
+        bot = _make_bot()
+        msg = _message("!died", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(id=11, points=1, game_id="456", game_name="Celeste")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("456", "Celeste"),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        self.assertEqual(_stats["commands_seen"], 1)
+        self.assertEqual(_stats["events_registered"], 1)
+
+    async def test_death_game_lookup_failure_uses_empty_game_name(self):
+        bot = _make_bot()
+        msg = _message("!death", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(id=12, points=1, game_id="", game_name="")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("", ""),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event) as mock_register,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        self.assertEqual(mock_register.call_args.kwargs["game_id"], "")
+        self.assertEqual(mock_register.call_args.kwargs["game_name"], "")
+
+    async def test_death_in_reply_channel_sends_confirmation(self):
+        bot = _make_bot(reply_channels={"streamerchan"})
+        msg = _message("!death", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(id=13, points=1, game_id="789", game_name="Balatro")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("789", "Balatro"),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("Death logged", sent)
+        self.assertIn("Balatro", sent)
+
+
 class BotCommandTests(SimpleTestCase):
     """Tests for @bot mention commands routed through _handle_bot_command."""
 
@@ -603,6 +709,35 @@ class ReplyAuthorizationTests(SimpleTestCase):
         after = _counter_value(
             "simpwatch_twitch_commands_total",
             labels={"command": "simp"},
+        )
+        self.assertEqual(after - before, 1.0)
+
+    async def test_death_command_increments_command_metric(self):
+        bot = _make_bot()
+        msg = _message("!death", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(id=2, points=1, game_id="123", game_name="Hades")
+        before = _counter_value(
+            "simpwatch_twitch_commands_total",
+            labels={"command": "death"},
+        )
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "Hades"),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        after = _counter_value(
+            "simpwatch_twitch_commands_total",
+            labels={"command": "death"},
         )
         self.assertEqual(after - before, 1.0)
 

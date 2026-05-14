@@ -13,7 +13,7 @@ from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.db.models import Sum
 from django.http import JsonResponse
 from django.http import HttpResponse
@@ -162,6 +162,108 @@ def _bamder_recent_events(window: str):
     if since is not None:
         qs = qs.filter(created_at__gte=since)
     return qs[:25]
+
+
+def _death_game_options() -> list[dict]:
+    game_rows = (
+        SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
+        .values("game_id", "game_name")
+        .annotate(last_seen=Max("created_at"))
+        .order_by("-last_seen")
+    )
+    seen_game_ids: set[str] = set()
+    has_unknown = False
+    options: list[dict] = []
+
+    for row in game_rows:
+        game_id = (row.get("game_id") or "").strip()
+        game_name = (row.get("game_name") or "").strip()
+        if game_id:
+            if game_id in seen_game_ids:
+                continue
+            seen_game_ids.add(game_id)
+            options.append(
+                {
+                    "game_id": game_id,
+                    "game_name": game_name or f"Game {game_id}",
+                }
+            )
+        else:
+            has_unknown = True
+
+    options.sort(key=lambda row: row["game_name"].lower())
+    if has_unknown:
+        options.append({"game_id": "unknown", "game_name": "Unknown"})
+    return options
+
+
+def _deathboard_rows_alltime(selected_game_id: str = "") -> list[dict]:
+    qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
+    if selected_game_id == "unknown":
+        qs = qs.filter(game_id="")
+    elif selected_game_id:
+        qs = qs.filter(game_id=selected_game_id)
+
+    counts = (
+        qs.values("target_person")
+        .annotate(death_count=Count("id"))
+        .order_by("-death_count", "target_person")
+    )
+    person_ids = [row["target_person"] for row in counts]
+    people = {person.id: person for person in Person.objects.filter(id__in=person_ids)}
+
+    rows = []
+    for row in counts:
+        person = people.get(row["target_person"])
+        if not person:
+            continue
+        rows.append(
+            {
+                "person": person,
+                "death_count": row["death_count"],
+            }
+        )
+    return rows
+
+
+def _recent_death_events_alltime(selected_game_id: str = ""):
+    qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
+    if selected_game_id == "unknown":
+        qs = qs.filter(game_id="")
+    elif selected_game_id:
+        qs = qs.filter(game_id=selected_game_id)
+    return qs.select_related("actor_identity", "target_person").order_by("-created_at")[:25]
+
+
+def _games_by_death_count() -> list[dict]:
+    """Get games ranked by total death count."""
+    counts = (
+        SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
+        .values("game_id", "game_name")
+        .annotate(total_deaths=Count("id"))
+        .order_by("-total_deaths")
+    )
+
+    games = []
+    for row in counts:
+        game_id = (row.get("game_id") or "").strip()
+        game_name = (row.get("game_name") or "").strip()
+        total_deaths = row.get("total_deaths", 0)
+
+        if game_id:
+            games.append({
+                "game_id": game_id,
+                "game_name": game_name or f"Game {game_id}",
+                "total_deaths": total_deaths,
+            })
+        elif total_deaths > 0:
+            games.append({
+                "game_id": "unknown",
+                "game_name": "Unknown",
+                "total_deaths": total_deaths,
+            })
+
+    return games
 
 
 def _watched_channels() -> list[str]:
@@ -872,6 +974,94 @@ def leaderboard_api(request):
     response = JsonResponse(payload)
     duration = max(time.monotonic() - started, 0.0)
     endpoint = "leaderboard_api"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(request.method, endpoint, "2xx").inc()
+    return response
+
+
+def deathboard_page(request):
+    started = time.monotonic()
+    selected_game_id = request.GET.get("game", "").strip()
+    key = _cache_key("deathboard_page", f"all:{selected_game_id or 'all'}")
+    context = cache.get(key)
+    if context is None:
+        leaderboard_cache_total.labels("deathboard_page", "miss").inc()
+        channels = _watched_channels_enriched()
+        games = _death_game_options()
+        selected_game_name = ""
+        if selected_game_id:
+            for game in games:
+                if game.get("game_id") == selected_game_id:
+                    selected_game_name = game.get("game_name", "")
+                    break
+        context = {
+            "rows": _deathboard_rows_alltime(selected_game_id),
+            "recent_events": _recent_death_events_alltime(selected_game_id),
+            "games": games,
+            "selected_game_id": selected_game_id,
+            "selected_game_name": selected_game_name,
+            "most_lethal_games": _games_by_death_count(),
+            "watched_channels": channels,
+            "twitch_configured": bool(
+                getattr(settings, "TWITCH_BOT_USERNAME", "") or channels
+            ),
+            "twitch_bot_username": getattr(settings, "TWITCH_BOT_USERNAME", ""),
+            "discord_configured": bool(getattr(settings, "DISCORD_BOT_TOKEN", "")),
+        }
+        cache.set(key, context, _cache_ttl())
+    else:
+        leaderboard_cache_total.labels("deathboard_page", "hit").inc()
+
+    response = render(request, "simpwatch/deathboard.html", context)
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "deathboard_page"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(request.method, endpoint, "2xx").inc()
+    return response
+
+
+def deathboard_api(request):
+    started = time.monotonic()
+    selected_game_id = request.GET.get("game", "").strip()
+    key = _cache_key("deathboard_api", f"all:{selected_game_id or 'all'}")
+    payload = cache.get(key)
+    if payload is None:
+        leaderboard_cache_total.labels("deathboard_api", "miss").inc()
+        rows = _deathboard_rows_alltime(selected_game_id)
+        recent_events = _recent_death_events_alltime(selected_game_id)
+        payload = {
+            "window": "all",
+            "selected_game_id": selected_game_id,
+            "games": _death_game_options(),
+            "deathboard": [
+                {
+                    "person_id": row["person"].id,
+                    "name": row["person"].name,
+                    "death_count": row["death_count"],
+                }
+                for row in rows
+            ],
+            "recent_deaths": [
+                {
+                    "id": event.id,
+                    "actor": event.actor_identity.username,
+                    "target": event.target_person.name,
+                    "game_id": event.game_id,
+                    "game_name": event.game_name,
+                    "reason": event.reason,
+                    "source": event.source,
+                    "created_at": event.created_at.isoformat(),
+                }
+                for event in recent_events
+            ],
+        }
+        cache.set(key, payload, _cache_ttl())
+    else:
+        leaderboard_cache_total.labels("deathboard_api", "hit").inc()
+
+    response = JsonResponse(payload)
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "deathboard_api"
     http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
     http_requests_total.labels(request.method, endpoint, "2xx").inc()
     return response

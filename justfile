@@ -1,5 +1,7 @@
 # simpwatch justfile — run `just` to list available recipes
 
+set dotenv-load := true
+
 # Default: list all recipes
 default:
     @just --list
@@ -51,6 +53,14 @@ collectstatic:
 # Open a Django shell
 shell:
     docker compose exec web python manage.py shell
+
+# Fetch Twitch user/stream info for a broadcaster login (e.g. just twitch-info prvbutts)
+twitch-info broadcaster:
+    docker compose exec web python manage.py twitch_channel_info {{ broadcaster }}
+
+# Fetch Twitch user/stream info as JSON (e.g. just twitch-info-json prvbutts)
+twitch-info-json broadcaster:
+    docker compose exec web python manage.py twitch_channel_info {{ broadcaster }} --json
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 

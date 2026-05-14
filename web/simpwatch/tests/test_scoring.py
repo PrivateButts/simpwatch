@@ -111,6 +111,33 @@ class ScoringTests(TestCase):
         self.assertEqual(event.event_type, SimpEvent.EventType.BAMDER)
         self.assertEqual(event.reason, "was chaotic")
 
+    def test_register_death_event_type_with_game_name(self):
+        target = Person.objects.create(name="streamer")
+        event = register_simp(
+            actor=IdentityInput(
+                platform=str(Identity.Platform.TWITCH),
+                platform_user_id="actor-3",
+                username="caller3",
+                display_name="Caller3",
+            ),
+            target=target,
+            platform=str(Identity.Platform.TWITCH),
+            event_type=str(SimpEvent.EventType.DEATH),
+            source="streamer_channel",
+            reason="lava",
+            game_id="12345",
+            game_name="Elden Ring",
+            raw_content="!death lava",
+            message_id="m3",
+            dedupe_key="twitch:m3",
+        )
+
+        self.assertIsNotNone(event)
+        event = cast(SimpEvent, event)
+        self.assertEqual(event.event_type, SimpEvent.EventType.DEATH)
+        self.assertEqual(event.game_id, "12345")
+        self.assertEqual(event.game_name, "Elden Ring")
+
 
 class LeaderboardQueryTests(TestCase):
     """Tests for get_leaderboard_entries and get_person_score_and_rank."""

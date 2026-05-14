@@ -199,6 +199,23 @@ class DeathboardViewTests(TestCase):
         self.assertEqual(payload["deathboard"][0]["death_count"], 2)
         self.assertEqual(payload["games"][0]["game_id"], "100")
 
+    def test_deathboard_api_sums_multi_point_death_events(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="100",
+            game_name="Elden Ring",
+            source="streamer",
+            points=10,
+        )
+        response = self.client.get("/api/deathboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["deathboard"][0]["name"], "StreamerOne")
+        self.assertEqual(payload["deathboard"][0]["death_count"], 10)
+
     @override_settings(TWITCH_BOT_USERNAME="testbot")
     def test_deathboard_page_renders(self):
         cache.clear()

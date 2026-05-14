@@ -156,7 +156,9 @@ def _bamder_total(window: str) -> int:
     if since is not None:
         qs = qs.filter(created_at__gte=since)
         adjustment_qs = adjustment_qs.filter(created_at__gte=since)
-    return qs.count() + (adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0)
+    return (qs.aggregate(total=Sum("points"))["total"] or 0) + (
+        adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
+    )
 
 
 def _bamder_recent_events(window: str):
@@ -226,7 +228,7 @@ def _deathboard_rows_alltime(selected_game_id: str = "") -> list[dict]:
 
     event_totals = {
         row["target_person"]: row["death_count"]
-        for row in event_qs.values("target_person").annotate(death_count=Count("id"))
+        for row in event_qs.values("target_person").annotate(death_count=Sum("points"))
     }
     adjustment_totals = {
         row["target_person"]: row["adjustment_total"]
@@ -271,7 +273,7 @@ def _games_by_death_count() -> list[dict]:
     event_counts = (
         SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
         .values("game_id", "game_name")
-        .annotate(total_deaths=Count("id"))
+        .annotate(total_deaths=Sum("points"))
     )
     adjustment_counts = (
         ScoreAdjustment.objects.filter(

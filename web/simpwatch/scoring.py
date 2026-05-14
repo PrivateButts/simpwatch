@@ -293,14 +293,24 @@ def get_bamder_counts(person: Person) -> tuple[int, int, int]:
     adjustment_qs_today = adjustment_qs.filter(
         created_at__gte=now - timedelta(hours=24)
     )
-    total = qs.count() + (
+    total = (qs.aggregate(total=Sum("points"))["total"] or 0) + (
         adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
     )
-    this_week = qs.filter(created_at__gte=now - timedelta(days=7)).count() + (
+    this_week = (
+        qs.filter(created_at__gte=now - timedelta(days=7)).aggregate(
+            total=Sum("points")
+        )["total"]
+        or 0
+    ) + (
         adjustment_qs_week.aggregate(total=Sum("points_delta"))["total"]
         or 0
     )
-    today = qs.filter(created_at__gte=now - timedelta(hours=24)).count() + (
+    today = (
+        qs.filter(created_at__gte=now - timedelta(hours=24)).aggregate(
+            total=Sum("points")
+        )["total"]
+        or 0
+    ) + (
         adjustment_qs_today.aggregate(total=Sum("points_delta"))["total"]
         or 0
     )
@@ -324,7 +334,9 @@ def get_death_count_for_person_in_game(person: Person, game_id: str) -> int:
     elif normalized_game_id:
         qs = qs.filter(game_id=normalized_game_id)
         adjustment_qs = adjustment_qs.filter(game_id=normalized_game_id)
-    return qs.count() + (adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0)
+    return (qs.aggregate(total=Sum("points"))["total"] or 0) + (
+        adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
+    )
 
 
 def person_total_score(person: Person, since=None) -> int:

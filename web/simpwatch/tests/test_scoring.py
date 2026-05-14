@@ -8,6 +8,7 @@ from simpwatch.scoring import (
     get_bamder_counts,
     get_death_count_for_person_in_game,
     get_leaderboard_entries,
+    get_or_create_identity,
     get_person_score_and_rank,
     merge_people,
     register_simp,
@@ -337,6 +338,21 @@ class BamderCountsTests(TestCase):
         self.assertEqual(this_week, 2)
         self.assertEqual(total, 2)
 
+    def test_multi_point_bamder_event_is_summed(self):
+        pamder = Person.objects.create(name="pamder")
+        actor = self._actor("a1", "user1")
+        actor_identity = get_or_create_identity(actor)
+        SimpEvent.objects.create(
+            actor_identity=actor_identity,
+            target_person=pamder,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.BAMDER,
+            source="chan",
+            points=5,
+        )
+        today, this_week, total = get_bamder_counts(pamder)
+        self.assertEqual(total, 5)
+
 
 class DeathCountTests(TestCase):
     def test_get_death_count_for_person_in_game_counts_matching_game_only(self):
@@ -395,3 +411,24 @@ class DeathCountTests(TestCase):
             reason="manual correction",
         )
         self.assertEqual(get_death_count_for_person_in_game(target, "123"), 3)
+
+    def test_multi_point_death_event_is_summed(self):
+        target = Person.objects.create(name="streamer")
+        actor = Identity.objects.create(
+            person=Person.objects.create(name="caller"),
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="actor-mp",
+            username="caller2",
+            display_name="caller2",
+        )
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.DEATH,
+            game_id="999",
+            game_name="Some Game",
+            source="streamer",
+            points=7,
+        )
+        self.assertEqual(get_death_count_for_person_in_game(target, "999"), 7)

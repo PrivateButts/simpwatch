@@ -6,7 +6,14 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from unittest.mock import patch
 
-from simpwatch.models import Identity, Person, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant
+from simpwatch.models import (
+    Identity,
+    Person,
+    ScoreAdjustment,
+    SimpEvent,
+    TwitchBotGrant,
+    TwitchBroadcasterGrant,
+)
 
 
 class LeaderboardViewTests(TestCase):
@@ -176,6 +183,22 @@ class DeathboardViewTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["deathboard"], [])
 
+    def test_deathboard_api_includes_death_adjustments(self):
+        ScoreAdjustment.objects.create(
+            target_person=self.target_one,
+            adjustment_type=ScoreAdjustment.AdjustmentType.DEATH,
+            points_delta=2,
+            game_id="100",
+            game_name="Elden Ring",
+            reason="manual correction",
+        )
+        response = self.client.get("/api/deathboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["deathboard"][0]["name"], "StreamerOne")
+        self.assertEqual(payload["deathboard"][0]["death_count"], 2)
+        self.assertEqual(payload["games"][0]["game_id"], "100")
+
     @override_settings(TWITCH_BOT_USERNAME="testbot")
     def test_deathboard_page_renders(self):
         cache.clear()
@@ -231,6 +254,18 @@ class DeathboardViewTests(TestCase):
         self.assertEqual(len(payload["bamder_recent_events"]), 1)
         self.assertEqual(payload["bamder_recent_events"][0]["reason"], "misbehaving")
 
+    def test_bamder_adjustments_are_counted(self):
+        ScoreAdjustment.objects.create(
+            target_person=Person.objects.create(name="pamder"),
+            adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
+            points_delta=2,
+            reason="manual correction",
+        )
+        response = self.client.get("/api/leaderboard", {"window": "all"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["bamder_total"], 2)
+
     def test_bamder_events_do_not_affect_simp_or_narc_leaderboards(self):
         SimpEvent.objects.create(
             actor_identity=self.actor_identity,
@@ -247,6 +282,19 @@ class DeathboardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
 
+        self.assertEqual(payload["leaderboard"], [])
+        self.assertEqual(payload["narc_leaderboard"], [])
+
+    def test_non_simp_adjustments_do_not_affect_simp_or_narc_leaderboards(self):
+        ScoreAdjustment.objects.create(
+            target_person=Person.objects.create(name="pamder"),
+            adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
+            points_delta=3,
+            reason="bamder fix",
+        )
+        response = self.client.get("/api/leaderboard", {"window": "all"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
         self.assertEqual(payload["leaderboard"], [])
         self.assertEqual(payload["narc_leaderboard"], [])
 

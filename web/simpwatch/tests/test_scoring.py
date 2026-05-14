@@ -192,6 +192,16 @@ class LeaderboardQueryTests(TestCase):
         )
         self.assertEqual(get_leaderboard_entries(), [])
 
+    def test_get_leaderboard_entries_excludes_non_simp_adjustments(self):
+        person = Person.objects.create(name="pamder")
+        ScoreAdjustment.objects.create(
+            target_person=person,
+            adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
+            points_delta=5,
+            reason="bamder correction",
+        )
+        self.assertEqual(get_leaderboard_entries(), [])
+
     def test_get_person_score_and_rank_found(self):
         p1 = Person.objects.create(name="top")
         Identity.objects.create(
@@ -314,6 +324,19 @@ class BamderCountsTests(TestCase):
         today, this_week, total = get_bamder_counts(pamder)
         self.assertEqual(total, 1)
 
+    def test_score_adjustments_are_included(self):
+        pamder = Person.objects.create(name="pamder")
+        ScoreAdjustment.objects.create(
+            target_person=pamder,
+            adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
+            points_delta=2,
+            reason="manual bamder add",
+        )
+        today, this_week, total = get_bamder_counts(pamder)
+        self.assertEqual(today, 2)
+        self.assertEqual(this_week, 2)
+        self.assertEqual(total, 2)
+
 
 class DeathCountTests(TestCase):
     def test_get_death_count_for_person_in_game_counts_matching_game_only(self):
@@ -360,3 +383,15 @@ class DeathCountTests(TestCase):
         self.assertEqual(get_death_count_for_person_in_game(target, "123"), 2)
         self.assertEqual(get_death_count_for_person_in_game(target, "456"), 1)
         self.assertEqual(get_death_count_for_person_in_game(target, "999"), 0)
+
+    def test_get_death_count_for_person_in_game_includes_adjustments(self):
+        target = Person.objects.create(name="streamer")
+        ScoreAdjustment.objects.create(
+            target_person=target,
+            adjustment_type=ScoreAdjustment.AdjustmentType.DEATH,
+            points_delta=3,
+            game_id="123",
+            game_name="Hades",
+            reason="manual correction",
+        )
+        self.assertEqual(get_death_count_for_person_in_game(target, "123"), 3)

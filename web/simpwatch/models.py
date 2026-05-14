@@ -83,11 +83,23 @@ class SimpEvent(models.Model):
 
 
 class ScoreAdjustment(models.Model):
+    class AdjustmentType(models.TextChoices):
+        SIMP = "simp", "Simp"
+        BAMDER = "bamder", "Bamder"
+        DEATH = "death", "Death"
+
     target_person = models.ForeignKey(
         Person, on_delete=models.CASCADE, related_name="score_adjustments"
     )
+    adjustment_type = models.CharField(
+        max_length=20,
+        choices=AdjustmentType.choices,
+        default=AdjustmentType.SIMP,
+    )
     points_delta = models.IntegerField()
     reason = models.CharField(max_length=500)
+    game_id = models.CharField(max_length=255, blank=True)
+    game_name = models.CharField(max_length=255, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )

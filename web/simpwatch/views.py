@@ -241,8 +241,8 @@ def _deathboard_rows_alltime(selected_game_id: str = "") -> list[dict]:
         person = people.get(person_id)
         if not person:
             continue
-        death_count = (event_totals.get(person_id) or 0) + (
-            adjustment_totals.get(person_id) or 0
+        death_count = event_totals.get(person_id, 0) + adjustment_totals.get(
+            person_id, 0
         )
         if death_count == 0:
             continue

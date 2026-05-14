@@ -287,19 +287,21 @@ def get_bamder_counts(person: Person) -> tuple[int, int, int]:
         target_person=person,
         adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
     )
+    adjustment_qs_week = adjustment_qs.filter(
+        created_at__gte=now - timedelta(days=7)
+    )
+    adjustment_qs_today = adjustment_qs.filter(
+        created_at__gte=now - timedelta(hours=24)
+    )
     total = qs.count() + (
         adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
     )
     this_week = qs.filter(created_at__gte=now - timedelta(days=7)).count() + (
-        adjustment_qs.filter(created_at__gte=now - timedelta(days=7)).aggregate(
-            total=Sum("points_delta")
-        )["total"]
+        adjustment_qs_week.aggregate(total=Sum("points_delta"))["total"]
         or 0
     )
     today = qs.filter(created_at__gte=now - timedelta(hours=24)).count() + (
-        adjustment_qs.filter(created_at__gte=now - timedelta(hours=24)).aggregate(
-            total=Sum("points_delta")
-        )["total"]
+        adjustment_qs_today.aggregate(total=Sum("points_delta"))["total"]
         or 0
     )
     return today, this_week, total

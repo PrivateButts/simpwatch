@@ -198,7 +198,9 @@ def get_leaderboard_entries(window: str = "all") -> list[dict]:
     since = timezone.now() - delta if delta is not None else None
 
     event_qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.SIMP)
-    adjustment_qs = ScoreAdjustment.objects.all()
+    adjustment_qs = ScoreAdjustment.objects.filter(
+        adjustment_type=ScoreAdjustment.AdjustmentType.SIMP
+    )
     if since is not None:
         event_qs = event_qs.filter(created_at__gte=since)
         adjustment_qs = adjustment_qs.filter(created_at__gte=since)
@@ -281,9 +283,37 @@ def get_bamder_counts(person: Person) -> tuple[int, int, int]:
         target_person=person,
         event_type=SimpEvent.EventType.BAMDER,
     )
-    total = qs.count()
-    this_week = qs.filter(created_at__gte=now - timedelta(days=7)).count()
-    today = qs.filter(created_at__gte=now - timedelta(hours=24)).count()
+    adjustment_qs = ScoreAdjustment.objects.filter(
+        target_person=person,
+        adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
+    )
+    adjustment_qs_week = adjustment_qs.filter(
+        created_at__gte=now - timedelta(days=7)
+    )
+    adjustment_qs_today = adjustment_qs.filter(
+        created_at__gte=now - timedelta(hours=24)
+    )
+    total = (qs.aggregate(total=Sum("points"))["total"] or 0) + (
+        adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
+    )
+    this_week = (
+        qs.filter(created_at__gte=now - timedelta(days=7)).aggregate(
+            total=Sum("points")
+        )["total"]
+        or 0
+    ) + (
+        adjustment_qs_week.aggregate(total=Sum("points_delta"))["total"]
+        or 0
+    )
+    today = (
+        qs.filter(created_at__gte=now - timedelta(hours=24)).aggregate(
+            total=Sum("points")
+        )["total"]
+        or 0
+    ) + (
+        adjustment_qs_today.aggregate(total=Sum("points_delta"))["total"]
+        or 0
+    )
     return today, this_week, total
 
 
@@ -293,17 +323,28 @@ def get_death_count_for_person_in_game(person: Person, game_id: str) -> int:
         target_person=person,
         event_type=SimpEvent.EventType.DEATH,
     )
+    adjustment_qs = ScoreAdjustment.objects.filter(
+        target_person=person,
+        adjustment_type=ScoreAdjustment.AdjustmentType.DEATH,
+    )
     normalized_game_id = game_id.strip()
     if normalized_game_id == "unknown":
         qs = qs.filter(game_id="")
+        adjustment_qs = adjustment_qs.filter(game_id="")
     elif normalized_game_id:
         qs = qs.filter(game_id=normalized_game_id)
-    return qs.count()
+        adjustment_qs = adjustment_qs.filter(game_id=normalized_game_id)
+    return (qs.aggregate(total=Sum("points"))["total"] or 0) + (
+        adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
+    )
 
 
 def person_total_score(person: Person, since=None) -> int:
     events = SimpEvent.objects.filter(target_person=person)
-    adjustments = ScoreAdjustment.objects.filter(target_person=person)
+    adjustments = ScoreAdjustment.objects.filter(
+        target_person=person,
+        adjustment_type=ScoreAdjustment.AdjustmentType.SIMP,
+    )
     if since is not None:
         events = events.filter(created_at__gte=since)
         adjustments = adjustments.filter(created_at__gte=since)

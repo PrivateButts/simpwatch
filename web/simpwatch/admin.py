@@ -87,18 +87,24 @@ class ScoreAdjustmentAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "target_person",
+        "adjustment_type",
         "points_delta",
+        "game_id",
+        "game_name",
         "reason",
         "created_by",
         "created_at",
     )
-    list_filter = ("created_at",)
-    search_fields = ("target_person__name", "reason")
+    list_filter = ("adjustment_type", "created_at")
+    search_fields = ("target_person__name", "reason", "game_id", "game_name")
     autocomplete_fields = ("target_person", "created_by")
 
     def save_model(self, request, obj, form, change):
         if not obj.created_by_id:
             obj.created_by = request.user
+        if obj.adjustment_type != ScoreAdjustment.AdjustmentType.DEATH:
+            obj.game_id = ""
+            obj.game_name = ""
         super().save_model(request, obj, form, change)
         bump_leaderboard_cache_version()
 

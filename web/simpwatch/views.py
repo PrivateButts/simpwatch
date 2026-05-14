@@ -580,6 +580,15 @@ def _watched_channels_enriched() -> list[dict]:
                 }
             )
 
+    active_grant_logins = set(
+        TwitchBroadcasterGrant.objects.filter(
+            is_active=True,
+            username__in=[ch["login"] for ch in result],
+        ).values_list("username", flat=True)
+    )
+    for ch in result:
+        ch["has_grant"] = ch["login"] in active_grant_logins
+
     cache.set(_TWITCH_CHANNEL_CACHE_KEY, result, _TWITCH_CHANNEL_CACHE_TTL)
     return result
 

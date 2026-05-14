@@ -361,6 +361,59 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("https://twitch.tv/streamer1", content)
         self.assertIn("https://twitch.tv/streamer2", content)
 
+    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
+    def test_no_grant_badge_shown_when_channel_lacks_grant(self):
+        cache.clear()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("bot inactive", content)
+
+    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
+    def test_no_grant_badge_hidden_when_channel_has_active_grant(self):
+        cache.clear()
+        TwitchBroadcasterGrant.objects.create(
+            username="streamer1",
+            broadcaster_user_id="111",
+            access_token="a",
+            refresh_token="r",
+            is_active=True,
+        )
+        TwitchBroadcasterGrant.objects.create(
+            username="streamer2",
+            broadcaster_user_id="222",
+            access_token="a",
+            refresh_token="r",
+            is_active=True,
+        )
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertNotIn("bot inactive", content)
+
+    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
+    def test_no_grant_badge_shown_when_grant_is_inactive(self):
+        cache.clear()
+        TwitchBroadcasterGrant.objects.create(
+            username="streamer1",
+            broadcaster_user_id="111",
+            access_token="a",
+            refresh_token="r",
+            is_active=False,
+        )
+        TwitchBroadcasterGrant.objects.create(
+            username="streamer2",
+            broadcaster_user_id="222",
+            access_token="a",
+            refresh_token="r",
+            is_active=True,
+        )
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        # streamer1 has an inactive grant so badge should still appear
+        self.assertIn("bot inactive", content)
+
     @override_settings(TWITCH_CHANNELS=[], TWITCH_BOT_USERNAME="", DISCORD_BOT_TOKEN="")
     def test_no_channels_shows_fallback_message(self):
         cache.clear()

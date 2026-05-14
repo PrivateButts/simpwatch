@@ -367,7 +367,7 @@ class HelpSectionViewTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn("bot inactive", content)
+        self.assertIn("Lurk Only", content)
 
     @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_no_grant_badge_hidden_when_channel_has_active_grant(self):
@@ -389,7 +389,7 @@ class HelpSectionViewTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertNotIn("bot inactive", content)
+        self.assertNotIn("Lurk Only", content)
 
     @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_no_grant_badge_shown_when_grant_is_inactive(self):
@@ -412,7 +412,7 @@ class HelpSectionViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         # streamer1 has an inactive grant so badge should still appear
-        self.assertIn("bot inactive", content)
+        self.assertIn("Lurk Only", content)
 
     @override_settings(TWITCH_CHANNELS=[], TWITCH_BOT_USERNAME="", DISCORD_BOT_TOKEN="")
     def test_no_channels_shows_fallback_message(self):

@@ -510,7 +510,7 @@
                     <div class="channel-name-row">
                       <span>{{ channel.display_name }}</span>
                       {% if channel.is_live %}<span class="channel-badge live-badge">LIVE</span>{% endif %}
-                      {% if not channel.has_grant %}<span class="channel-badge no-grant-badge" title="The bot has not been authorized for this channel and will not respond to commands.">bot inactive</span>{% endif %}
+                      {% if not channel.has_grant %}<span class="channel-badge no-grant-badge" title="The bot will not respond to commands in chat, but results will be recorded">Lurk Only</span>{% endif %}
                     </div>
                     {% if channel.is_live %}
                     <div class="channel-stats">

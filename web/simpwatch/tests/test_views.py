@@ -176,7 +176,9 @@ class DeathboardViewTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["deathboard"], [])
 
+    @override_settings(TWITCH_BOT_USERNAME="testbot")
     def test_deathboard_page_renders(self):
+        cache.clear()
         SimpEvent.objects.create(
             actor_identity=self.actor_identity,
             target_person=self.target_one,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -107,6 +108,17 @@ class ScoreAdjustment(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["created_at"])]
+
+    def clean(self):
+        if self.adjustment_type != self.AdjustmentType.DEATH and (
+            self.game_id or self.game_name
+        ):
+            raise ValidationError(
+                {
+                    "game_id": "Only death adjustments can set game information.",
+                    "game_name": "Only death adjustments can set game information.",
+                }
+            )
 
     def __str__(self) -> str:
         return f"{self.target_person} ({self.points_delta:+d})"

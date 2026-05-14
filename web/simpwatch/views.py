@@ -3,6 +3,7 @@ import logging
 import hashlib
 import secrets
 import time
+from itertools import chain
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -189,7 +190,7 @@ def _death_game_options() -> list[dict]:
     has_unknown = False
     options: list[dict] = []
 
-    for row in list(event_rows) + list(adjustment_rows):
+    for row in chain(event_rows, adjustment_rows):
         game_id = (row.get("game_id") or "").strip()
         game_name = (row.get("game_name") or "").strip()
         if game_id:
@@ -228,9 +229,9 @@ def _deathboard_rows_alltime(selected_game_id: str = "") -> list[dict]:
         for row in event_qs.values("target_person").annotate(death_count=Count("id"))
     }
     adjustment_totals = {
-        row["target_person"]: row["death_count"]
+        row["target_person"]: row["adjustment_total"]
         for row in adjustment_qs.values("target_person").annotate(
-            death_count=Sum("points_delta")
+            adjustment_total=Sum("points_delta")
         )
     }
     person_ids = sorted(set(event_totals.keys()) | set(adjustment_totals.keys()))
@@ -280,25 +281,25 @@ def _games_by_death_count() -> list[dict]:
         .annotate(total_deaths=Sum("points_delta"))
     )
 
-    totals_by_game: dict[str, int] = {}
-    names_by_game: dict[str, str] = {}
-    for row in list(event_counts) + list(adjustment_counts):
+    totals_by_game_id: dict[str, int] = {}
+    names_by_game_id: dict[str, str] = {}
+    for row in chain(event_counts, adjustment_counts):
         game_id = (row.get("game_id") or "").strip()
         game_name = (row.get("game_name") or "").strip()
         total_deaths = row.get("total_deaths") or 0
         key = game_id or "unknown"
-        totals_by_game[key] = totals_by_game.get(key, 0) + total_deaths
-        if key not in names_by_game and game_name:
-            names_by_game[key] = game_name
+        totals_by_game_id[key] = totals_by_game_id.get(key, 0) + total_deaths
+        if key not in names_by_game_id and game_name:
+            names_by_game_id[key] = game_name
 
     games = []
-    for game_id, total_deaths in totals_by_game.items():
+    for game_id, total_deaths in totals_by_game_id.items():
         if total_deaths == 0:
             continue
         if game_id == "unknown":
             game_name = "Unknown"
         else:
-            game_name = names_by_game.get(game_id) or f"Game {game_id}"
+            game_name = names_by_game_id.get(game_id) or f"Game {game_id}"
         games.append(
             {
                 "game_id": game_id,

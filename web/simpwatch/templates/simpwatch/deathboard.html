@@ -184,6 +184,11 @@
       gap: 8px;
     }
 
+    .recent-deaths-list {
+      max-height: 450px;
+      overflow-y: auto;
+    }
+
     .event {
       border: 1px solid var(--event-border);
       background: var(--event-bg);
@@ -435,7 +440,7 @@
 
       <article class="panel">
         <h2>Recent Deaths</h2>
-        <div class="event-list">
+        <div class="event-list recent-deaths-list">
           {% for event in recent_events %}
           <div class="event">
             <div><strong>{{ event.target_person.name }}</strong> died in <strong>{% if event.game_name %}{{ event.game_name }}{% else %}Unknown{% endif %}</strong>.</div>

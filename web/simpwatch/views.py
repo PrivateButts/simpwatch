@@ -32,7 +32,12 @@ from .metrics import (
     prometheus_payload,
 )
 from .models import Person, ScoreAdjustment, SimpEvent, TwitchBroadcasterGrant
-from .scoring import current_leaderboard_cache_version
+from .scoring import (
+    current_leaderboard_cache_version,
+    score_adjustment_has_columns,
+    score_adjustments_for_game_type,
+    score_adjustments_for_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +75,7 @@ def _get_since(window: str):
 def _leaderboard_rows(window: str):
     since = _get_since(window)
     event_qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.SIMP)
-    adjustment_qs = ScoreAdjustment.objects.filter(
-        adjustment_type=ScoreAdjustment.AdjustmentType.SIMP
-    )
+    adjustment_qs = score_adjustments_for_type(ScoreAdjustment.AdjustmentType.SIMP)
     if since is not None:
         event_qs = event_qs.filter(created_at__gte=since)
         adjustment_qs = adjustment_qs.filter(created_at__gte=since)
@@ -150,9 +153,7 @@ def _narc_rows(window: str):
 def _bamder_total(window: str) -> int:
     since = _get_since(window)
     qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.BAMDER)
-    adjustment_qs = ScoreAdjustment.objects.filter(
-        adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER
-    )
+    adjustment_qs = score_adjustments_for_type(ScoreAdjustment.AdjustmentType.BAMDER)
     if since is not None:
         qs = qs.filter(created_at__gte=since)
         adjustment_qs = adjustment_qs.filter(created_at__gte=since)
@@ -173,6 +174,56 @@ def _bamder_recent_events(window: str):
     return qs[:25]
 
 
+def _banthem_rows(window: str):
+    since = _get_since(window)
+    event_qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.BANTHEM)
+    adjustment_qs = score_adjustments_for_type(
+        ScoreAdjustment.AdjustmentType.BANTHEM
+    )
+    if since is not None:
+        event_qs = event_qs.filter(created_at__gte=since)
+        adjustment_qs = adjustment_qs.filter(created_at__gte=since)
+
+    event_totals = {
+        row["target_person"]: row["total"]
+        for row in event_qs.values("target_person").annotate(total=Sum("points"))
+    }
+    adjustment_totals = {
+        row["target_person"]: row["total"]
+        for row in adjustment_qs.values("target_person").annotate(
+            total=Sum("points_delta")
+        )
+    }
+    person_ids = sorted(set(event_totals.keys()) | set(adjustment_totals.keys()))
+    people = {p.id: p for p in Person.objects.filter(id__in=person_ids)}
+
+    rows = []
+    for person_id in person_ids:
+        total = (event_totals.get(person_id) or 0) + (
+            adjustment_totals.get(person_id) or 0
+        )
+        if total == 0:
+            continue
+        person = people.get(person_id)
+        if not person:
+            continue
+        rows.append({"person": person, "points": total})
+    rows.sort(key=lambda row: (-row["points"], row["person"].name.lower()))
+    return rows
+
+
+def _banthem_recent_events(window: str):
+    since = _get_since(window)
+    qs = (
+        SimpEvent.objects.filter(event_type=SimpEvent.EventType.BANTHEM)
+        .select_related("actor_identity", "target_person")
+        .order_by("-created_at")
+    )
+    if since is not None:
+        qs = qs.filter(created_at__gte=since)
+    return qs[:25]
+
+
 def _death_game_options() -> list[dict]:
     event_rows = (
         SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
@@ -180,14 +231,15 @@ def _death_game_options() -> list[dict]:
         .annotate(last_seen=Max("created_at"))
         .order_by("-last_seen")
     )
-    adjustment_rows = (
-        ScoreAdjustment.objects.filter(
-            adjustment_type=ScoreAdjustment.AdjustmentType.DEATH
+    if score_adjustment_has_columns("adjustment_type", "game_id", "game_name"):
+        adjustment_rows = (
+            score_adjustments_for_game_type(ScoreAdjustment.AdjustmentType.DEATH)
+            .values("game_id", "game_name")
+            .annotate(last_seen=Max("created_at"))
+            .order_by("-last_seen")
         )
-        .values("game_id", "game_name")
-        .annotate(last_seen=Max("created_at"))
-        .order_by("-last_seen")
-    )
+    else:
+        adjustment_rows = []
     seen_game_ids: set[str] = set()
     has_unknown = False
     options: list[dict] = []
@@ -216,8 +268,8 @@ def _death_game_options() -> list[dict]:
 
 def _deathboard_rows_alltime(selected_game_id: str = "") -> list[dict]:
     event_qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.DEATH)
-    adjustment_qs = ScoreAdjustment.objects.filter(
-        adjustment_type=ScoreAdjustment.AdjustmentType.DEATH
+    adjustment_qs = score_adjustments_for_game_type(
+        ScoreAdjustment.AdjustmentType.DEATH
     )
     if selected_game_id == "unknown":
         event_qs = event_qs.filter(game_id="")
@@ -275,13 +327,14 @@ def _games_by_death_count() -> list[dict]:
         .values("game_id", "game_name")
         .annotate(total_deaths=Sum("points"))
     )
-    adjustment_counts = (
-        ScoreAdjustment.objects.filter(
-            adjustment_type=ScoreAdjustment.AdjustmentType.DEATH
+    if score_adjustment_has_columns("adjustment_type", "game_id", "game_name"):
+        adjustment_counts = (
+            score_adjustments_for_game_type(ScoreAdjustment.AdjustmentType.DEATH)
+            .values("game_id", "game_name")
+            .annotate(total_deaths=Sum("points_delta"))
         )
-        .values("game_id", "game_name")
-        .annotate(total_deaths=Sum("points_delta"))
-    )
+    else:
+        adjustment_counts = []
 
     totals_by_game_id: dict[str, int] = {}
     names_by_game_id: dict[str, str] = {}
@@ -948,6 +1001,8 @@ def leaderboard_page(request):
             "narc_rows": _narc_rows(window),
             "bamder_total": _bamder_total(window),
             "bamder_recent_events": _bamder_recent_events(window),
+            "banthem_rows": _banthem_rows(window),
+            "banthem_recent_events": _banthem_recent_events(window),
             "recent_events": _recent_events(window),
             "watched_channels": channels,
             "twitch_configured": bool(
@@ -980,6 +1035,8 @@ def leaderboard_api(request):
         narc_rows = _narc_rows(window)
         bamder_total = _bamder_total(window)
         bamder_events = _bamder_recent_events(window)
+        banthem_rows = _banthem_rows(window)
+        banthem_events = _banthem_recent_events(window)
         events = _recent_events(window)
         payload = {
             "window": window,
@@ -1004,11 +1061,31 @@ def leaderboard_api(request):
                 {
                     "id": event.id,
                     "actor": event.actor_identity.username,
+                    "target": event.target_person.name,
                     "reason": event.reason,
                     "source": event.source,
                     "created_at": event.created_at.isoformat(),
                 }
                 for event in bamder_events
+            ],
+            "banthem_leaderboard": [
+                {
+                    "person_id": row["person"].id,
+                    "name": row["person"].name,
+                    "points": row["points"],
+                }
+                for row in banthem_rows
+            ],
+            "banthem_recent_events": [
+                {
+                    "id": event.id,
+                    "actor": event.actor_identity.username,
+                    "target": event.target_person.name,
+                    "reason": event.reason,
+                    "source": event.source,
+                    "created_at": event.created_at.isoformat(),
+                }
+                for event in banthem_events
             ],
             "recent_events": [
                 {

@@ -1,10 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from typing import cast
+from unittest.mock import patch
 
 from simpwatch.models import Identity, Person, ScoreAdjustment, SimpEvent
 from simpwatch.scoring import (
     IdentityInput,
+    get_banthem_counts,
     get_bamder_counts,
     get_death_count_for_person_in_game,
     get_leaderboard_entries,
@@ -113,6 +115,30 @@ class ScoringTests(TestCase):
         self.assertEqual(event.event_type, SimpEvent.EventType.BAMDER)
         self.assertEqual(event.reason, "was chaotic")
 
+    def test_register_banthem_event_type(self):
+        target = Person.objects.create(name="prvbutts")
+        event = register_simp(
+            actor=IdentityInput(
+                platform=str(Identity.Platform.TWITCH),
+                platform_user_id="actor-2b",
+                username="caller2b",
+                display_name="Caller2b",
+            ),
+            target=target,
+            platform=str(Identity.Platform.TWITCH),
+            event_type=str(SimpEvent.EventType.BANTHEM),
+            source="streamer_channel",
+            reason="acted up",
+            raw_content="!ban @prvbutts reason acted up",
+            message_id="m2b",
+            dedupe_key="twitch:m2b",
+        )
+
+        self.assertIsNotNone(event)
+        event = cast(SimpEvent, event)
+        self.assertEqual(event.event_type, SimpEvent.EventType.BANTHEM)
+        self.assertEqual(event.reason, "acted up")
+
     def test_register_death_event_type_with_game_name(self):
         target = Person.objects.create(name="streamer")
         event = register_simp(
@@ -200,6 +226,20 @@ class LeaderboardQueryTests(TestCase):
             adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
             points_delta=5,
             reason="bamder correction",
+        )
+        self.assertEqual(get_leaderboard_entries(), [])
+
+    def test_get_leaderboard_entries_excludes_banthem_events(self):
+        target = Person.objects.create(name="prvbutts")
+        actor = self._actor("a1", "c1")
+        register_simp(
+            actor=actor,
+            target=target,
+            platform=str(Identity.Platform.TWITCH),
+            source="chan",
+            event_type=str(SimpEvent.EventType.BANTHEM),
+            message_id="ban1",
+            dedupe_key="twitch:ban1",
         )
         self.assertEqual(get_leaderboard_entries(), [])
 
@@ -352,6 +392,61 @@ class BamderCountsTests(TestCase):
         )
         today, this_week, total = get_bamder_counts(pamder)
         self.assertEqual(total, 5)
+
+
+class BanthemCountsTests(TestCase):
+    """Tests for get_banthem_counts."""
+
+    def _actor(self, uid: str, username: str) -> IdentityInput:
+        return IdentityInput(
+            platform=str(Identity.Platform.TWITCH),
+            platform_user_id=uid,
+            username=username,
+            display_name=username,
+        )
+
+    def _banthem(self, actor: IdentityInput, target: Person, uid: str) -> None:
+        register_simp(
+            actor=actor,
+            target=target,
+            platform=str(Identity.Platform.TWITCH),
+            event_type=str(SimpEvent.EventType.BANTHEM),
+            source="chan",
+            message_id=uid,
+            dedupe_key=f"twitch:{uid}",
+        )
+
+    def test_counts_after_single_banthem(self):
+        target = Person.objects.create(name="prvbutts")
+        self._banthem(self._actor("a1", "user1"), target, "m1")
+        today, this_week, total = get_banthem_counts(target)
+        self.assertEqual(today, 1)
+        self.assertEqual(this_week, 1)
+        self.assertEqual(total, 1)
+
+    def test_score_adjustments_are_included(self):
+        target = Person.objects.create(name="prvbutts")
+        ScoreAdjustment.objects.create(
+            target_person=target,
+            adjustment_type=ScoreAdjustment.AdjustmentType.BANTHEM,
+            points_delta=2,
+            reason="manual banthem add",
+        )
+        today, this_week, total = get_banthem_counts(target)
+        self.assertEqual(today, 2)
+        self.assertEqual(this_week, 2)
+        self.assertEqual(total, 2)
+
+    def test_missing_adjustment_type_column_falls_back_to_event_counts(self):
+        target = Person.objects.create(name="prvbutts")
+        self._banthem(self._actor("a1", "user1"), target, "m1")
+
+        with patch("simpwatch.scoring.score_adjustment_has_columns", return_value=False):
+            today, this_week, total = get_banthem_counts(target)
+
+        self.assertEqual(today, 1)
+        self.assertEqual(this_week, 1)
+        self.assertEqual(total, 1)
 
 
 class DeathCountTests(TestCase):

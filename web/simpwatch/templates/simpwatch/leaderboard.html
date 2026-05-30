@@ -462,6 +462,39 @@
           {% endfor %}
         </div>
       </article>
+
+      <article class="panel">
+        <h2>Most likely to be Banned ({{ window }})</h2>
+        {% if banthem_rows %}
+        <ol>
+          {% for row in banthem_rows %}
+          <li>
+            <span>{{ row.person.name }}</span>
+            <span class="points">{{ row.points }} bans</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p>No banthem incidents yet for this window.</p>
+        {% endif %}
+      </article>
+
+      <article class="panel">
+        <h2>Recent Ban Requests ({{ window }})</h2>
+        <div class="event-list">
+          {% for event in banthem_recent_events %}
+          <div class="event">
+            <div><strong>{{ event.actor_identity.username }}</strong> marked <strong>{{ event.target_person.name }}</strong> as likely to be banned.</div>
+            {% if event.reason %}
+            <div class="reason">Reason: {{ event.reason }}</div>
+            {% endif %}
+            <div class="meta">{{ event.platform }} · {{ event.source }} · <time class="js-local-time" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></div>
+          </div>
+          {% empty %}
+          <p>No recent ban requests for this window.</p>
+          {% endfor %}
+        </div>
+      </article>
     </section>
 
     <section class="help-section">
@@ -496,6 +529,18 @@
                 <tr>
                   <td class="cmd">!bamder reason &lt;text&gt;</td>
                   <td>Log a bamder incident with a reason</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!ban @username</td>
+                  <td>Log a banthem incident for a specific user</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!ban @username reason &lt;text&gt;</td>
+                  <td>Log a banthem incident with a reason</td>
+                </tr>
+                <tr>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} ban @username</td>
+                  <td>Log a targeted banthem incident through the bot mention command</td>
                 </tr>
                 <tr>
                   <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simpcheck [user]</td>

@@ -1,8 +1,10 @@
 from django.test import SimpleTestCase
 
 from simpwatch.command_parsing import (
+    parse_bot_ban_args,
     parse_bot_simp_args,
     parse_bot_mention_command,
+    parse_twitch_ban_args,
     parse_twitch_bamder_reason,
     parse_twitch_reason,
     parse_twitch_target,
@@ -77,8 +79,47 @@ class TwitchCommandParsingTests(SimpleTestCase):
     def test_parse_bamder_reason_keyword_without_text(self):
         self.assertEqual(parse_twitch_bamder_reason("!bamder reason"), "")
 
+    def test_parse_ban_args_requires_target(self):
+        self.assertIsNone(parse_twitch_ban_args("!ban"))
+
+    def test_parse_ban_args_with_target(self):
+        self.assertEqual(parse_twitch_ban_args("!ban @SomeUser"), ("someuser", ""))
+
+    def test_parse_ban_args_with_reason_keyword(self):
+        self.assertEqual(
+            parse_twitch_ban_args("!ban @SomeUser reason acted up again"),
+            ("someuser", "acted up again"),
+        )
+
+    def test_parse_ban_args_with_because_keyword(self):
+        self.assertEqual(
+            parse_twitch_ban_args("!ban @SomeUser because acted up again"),
+            ("someuser", "acted up again"),
+        )
+
+    def test_parse_ban_args_ignores_non_reason_tail(self):
+        self.assertEqual(
+            parse_twitch_ban_args("!ban @SomeUser definitely suspicious"),
+            ("someuser", ""),
+        )
+
+    def test_parse_ban_args_rejects_missing_mention(self):
+        self.assertIsNone(parse_twitch_ban_args("!ban SomeUser"))
+
 
 class BotMentionCommandParsingTests(SimpleTestCase):
+    def test_parse_bot_ban_args_requires_target(self):
+        self.assertIsNone(parse_bot_ban_args([]))
+
+    def test_parse_bot_ban_args_with_target(self):
+        self.assertEqual(parse_bot_ban_args(["@SomeUser"]), ("someuser", ""))
+
+    def test_parse_bot_ban_args_with_reason(self):
+        self.assertEqual(
+            parse_bot_ban_args(["@SomeUser", "reason", "acted", "up"]),
+            ("someuser", "acted up"),
+        )
+
     def test_simpcheck_no_target(self):
         result = parse_bot_mention_command("@mybot simpcheck", "mybot")
         self.assertEqual(result, ("simpcheck", []))

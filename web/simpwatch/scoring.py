@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import lru_cache
 from typing import Iterable
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import connection
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -14,6 +16,39 @@ from .models import Identity, Person, ScoreAdjustment, ScoringConfig, SimpEvent
 
 
 LEADERBOARD_CACHE_VERSION_KEY = "leaderboard:version"
+
+
+@lru_cache(maxsize=1)
+def _score_adjustment_columns() -> frozenset[str]:
+    table_name = ScoreAdjustment._meta.db_table
+    try:
+        with connection.cursor() as cursor:
+            return frozenset(
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor,
+                    table_name,
+                )
+            )
+    except Exception:
+        return frozenset()
+
+
+def score_adjustment_has_columns(*column_names: str) -> bool:
+    columns = _score_adjustment_columns()
+    return all(column_name in columns for column_name in column_names)
+
+
+def score_adjustments_for_type(adjustment_type: str):
+    if not score_adjustment_has_columns("adjustment_type"):
+        return ScoreAdjustment.objects.none()
+    return ScoreAdjustment.objects.filter(adjustment_type=adjustment_type)
+
+
+def score_adjustments_for_game_type(adjustment_type: str):
+    if not score_adjustment_has_columns("adjustment_type", "game_id", "game_name"):
+        return ScoreAdjustment.objects.none()
+    return ScoreAdjustment.objects.filter(adjustment_type=adjustment_type)
 
 
 def current_leaderboard_cache_version() -> int:
@@ -198,9 +233,7 @@ def get_leaderboard_entries(window: str = "all") -> list[dict]:
     since = timezone.now() - delta if delta is not None else None
 
     event_qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.SIMP)
-    adjustment_qs = ScoreAdjustment.objects.filter(
-        adjustment_type=ScoreAdjustment.AdjustmentType.SIMP
-    )
+    adjustment_qs = score_adjustments_for_type(ScoreAdjustment.AdjustmentType.SIMP)
     if since is not None:
         event_qs = event_qs.filter(created_at__gte=since)
         adjustment_qs = adjustment_qs.filter(created_at__gte=since)
@@ -283,10 +316,49 @@ def get_bamder_counts(person: Person) -> tuple[int, int, int]:
         target_person=person,
         event_type=SimpEvent.EventType.BAMDER,
     )
-    adjustment_qs = ScoreAdjustment.objects.filter(
-        target_person=person,
-        adjustment_type=ScoreAdjustment.AdjustmentType.BAMDER,
+    adjustment_qs = score_adjustments_for_type(
+        ScoreAdjustment.AdjustmentType.BAMDER
+    ).filter(target_person=person)
+    adjustment_qs_week = adjustment_qs.filter(
+        created_at__gte=now - timedelta(days=7)
     )
+    adjustment_qs_today = adjustment_qs.filter(
+        created_at__gte=now - timedelta(hours=24)
+    )
+    total = (qs.aggregate(total=Sum("points"))["total"] or 0) + (
+        adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
+    )
+    this_week = (
+        qs.filter(created_at__gte=now - timedelta(days=7)).aggregate(
+            total=Sum("points")
+        )["total"]
+        or 0
+    ) + (
+        adjustment_qs_week.aggregate(total=Sum("points_delta"))["total"]
+        or 0
+    )
+    today = (
+        qs.filter(created_at__gte=now - timedelta(hours=24)).aggregate(
+            total=Sum("points")
+        )["total"]
+        or 0
+    ) + (
+        adjustment_qs_today.aggregate(total=Sum("points_delta"))["total"]
+        or 0
+    )
+    return today, this_week, total
+
+
+def get_banthem_counts(person: Person) -> tuple[int, int, int]:
+    """Return ``(today, this_week, total)`` counts of banthem events for *person*."""
+    now = timezone.now()
+    qs = SimpEvent.objects.filter(
+        target_person=person,
+        event_type=SimpEvent.EventType.BANTHEM,
+    )
+    adjustment_qs = score_adjustments_for_type(
+        ScoreAdjustment.AdjustmentType.BANTHEM
+    ).filter(target_person=person)
     adjustment_qs_week = adjustment_qs.filter(
         created_at__gte=now - timedelta(days=7)
     )
@@ -323,10 +395,9 @@ def get_death_count_for_person_in_game(person: Person, game_id: str) -> int:
         target_person=person,
         event_type=SimpEvent.EventType.DEATH,
     )
-    adjustment_qs = ScoreAdjustment.objects.filter(
-        target_person=person,
-        adjustment_type=ScoreAdjustment.AdjustmentType.DEATH,
-    )
+    adjustment_qs = score_adjustments_for_game_type(
+        ScoreAdjustment.AdjustmentType.DEATH
+    ).filter(target_person=person)
     normalized_game_id = game_id.strip()
     if normalized_game_id == "unknown":
         qs = qs.filter(game_id="")
@@ -341,10 +412,9 @@ def get_death_count_for_person_in_game(person: Person, game_id: str) -> int:
 
 def person_total_score(person: Person, since=None) -> int:
     events = SimpEvent.objects.filter(target_person=person)
-    adjustments = ScoreAdjustment.objects.filter(
-        target_person=person,
-        adjustment_type=ScoreAdjustment.AdjustmentType.SIMP,
-    )
+    adjustments = score_adjustments_for_type(
+        ScoreAdjustment.AdjustmentType.SIMP
+    ).filter(target_person=person)
     if since is not None:
         events = events.filter(created_at__gte=since)
         adjustments = adjustments.filter(created_at__gte=since)

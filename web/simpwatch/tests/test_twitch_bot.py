@@ -397,6 +397,107 @@ class ProcessMessageBamderTests(SimpleTestCase):
         msg.channel.send.assert_not_awaited()
 
 
+class ProcessMessageBanTests(SimpleTestCase):
+    """Tests for the !ban path inside _process_message."""
+
+    def setUp(self) -> None:
+        for key in _stats:
+            _stats[key] = 0
+
+    async def test_ban_registers_event_against_named_target(self):
+        bot = _make_bot()
+        msg = _message("!ban @prvbutts", channel="streamerchan")
+        fake_target = SimpleNamespace(name="prvbutts")
+        fake_event = SimpleNamespace(id=8, points=1)
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ) as mock_target,
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_target.assert_called_once_with("prvbutts")
+        self.assertEqual(_stats["commands_seen"], 1)
+        self.assertEqual(_stats["events_registered"], 1)
+
+    async def test_ban_in_reply_channel_sends_count_message(self):
+        bot = _make_bot(reply_channels={"streamerchan"})
+        msg = _message("!ban @prvbutts", channel="streamerchan")
+        fake_target = SimpleNamespace(name="prvbutts")
+        fake_event = SimpleNamespace(id=8, points=1)
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+            patch(
+                "services.twitch_bot.main.get_banthem_counts", return_value=(2, 4, 7)
+            ),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("@prvbutts", sent)
+        self.assertIn("7 times", sent)
+
+    async def test_ban_missing_target_sends_usage(self):
+        bot = _make_bot()
+        msg = _message("!ban", channel="streamerchan")
+
+        with patch("services.twitch_bot.main.register_simp") as mock_register:
+            await bot._process_message(msg, msg.content)
+
+        mock_register.assert_not_called()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("Usage: !ban @username", sent)
+
+
+class BotMentionBanCommandTests(SimpleTestCase):
+    def setUp(self) -> None:
+        for key in _stats:
+            _stats[key] = 0
+
+    async def test_bot_ban_command_registers_banthem(self):
+        bot = _make_bot(nick="simpbot")
+        msg = _message("@simpbot ban @prvbutts", channel="streamerchan")
+        fake_target = SimpleNamespace(name="prvbutts")
+        fake_event = SimpleNamespace(id=18, points=1)
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ) as mock_target,
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+            patch(
+                "services.twitch_bot.main.get_banthem_counts", return_value=(1, 1, 1)
+            ),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_target.assert_called_once_with("prvbutts")
+        msg.channel.send.assert_awaited_once()
+
+    async def test_bot_ban_command_without_target_shows_usage(self):
+        bot = _make_bot(nick="simpbot")
+        msg = _message("@simpbot ban", channel="streamerchan")
+
+        with patch("services.twitch_bot.main.register_simp") as mock_register:
+            await bot._process_message(msg, msg.content)
+
+        mock_register.assert_not_called()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("@simpbot ban @username", sent)
+
+
 class ProcessMessageDeathTests(SimpleTestCase):
     """Tests for !death and !died handling inside _process_message."""
 

@@ -53,6 +53,15 @@ def parse_bot_simp_args(args: list[str]) -> tuple[str, str] | None:
     return target_username, " ".join(args[2:]).strip()
 
 
+def parse_bot_ban_args(args: list[str]) -> tuple[str, str] | None:
+    """Parse bot-mention ban arguments.
+
+    Accepts ``@target`` with optional ``reason|because <text>`` tail and
+    returns ``(target_username, reason)``. Returns ``None`` for invalid forms.
+    """
+    return parse_bot_simp_args(args)
+
+
 def parse_twitch_target(content: str) -> str | None:
     parts = content.strip().split()
     if len(parts) < 2:
@@ -97,3 +106,29 @@ def parse_twitch_bamder_reason(content: str) -> str:
         return " ".join(parts[2:]).strip()
 
     return " ".join(parts[1:]).strip()
+
+
+def parse_twitch_ban_args(content: str) -> tuple[str, str] | None:
+    parts = content.strip().split()
+    if len(parts) < 2:
+        return None
+
+    target_token = parts[1]
+    if not target_token.startswith("@"):
+        return None
+
+    target_username = target_token.lstrip("@").strip().lower()
+    if not target_username:
+        return None
+
+    if len(parts) < 3:
+        return target_username, ""
+
+    keyword = parts[2].lower()
+    if keyword not in {"reason", "because"}:
+        return target_username, ""
+
+    if len(parts) < 4:
+        return target_username, ""
+
+    return target_username, " ".join(parts[3:]).strip()

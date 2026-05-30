@@ -85,8 +85,10 @@ _twitch_channel_game_cache: dict[str, dict[str, str | float]] = {}
 from simpwatch.models import Identity, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant  # noqa: E402
 
 from simpwatch.command_parsing import (  # noqa: E402
+    parse_bot_ban_args,
     parse_bot_simp_args,
     parse_bot_mention_command,
+    parse_twitch_ban_args,
     parse_twitch_bamder_reason,
     parse_twitch_reason,
 )
@@ -101,6 +103,7 @@ from simpwatch.metrics import (  # noqa: E402
 )
 from simpwatch.scoring import (  # noqa: E402
     IdentityInput,
+    get_banthem_counts,
     get_bamder_counts,
     get_death_count_for_person_in_game,
     get_leaderboard_entries,
@@ -866,6 +869,7 @@ class TwitchSimpBot(commands.Bot):
 
         lowered = content.lower()
         _is_simp = lowered == "!simp" or lowered.startswith("!simp ")
+        _is_ban = lowered == "!ban" or lowered.startswith("!ban ")
         _is_bamder = lowered == "!bamder" or lowered.startswith("!bamder ")
         _is_death = (
             lowered == "!death"
@@ -874,12 +878,14 @@ class TwitchSimpBot(commands.Bot):
             or lowered.startswith("!died ")
         )
         _is_deathcheck = lowered == "!deathcheck" or lowered.startswith("!deathcheck ")
-        if not _is_simp and not _is_bamder and not _is_death and not _is_deathcheck:
+        if not _is_simp and not _is_ban and not _is_bamder and not _is_death and not _is_deathcheck:
             return
 
         _stats["commands_seen"] += 1
         if _is_bamder:
             twitch_commands_total.labels("bamder").inc()
+        elif _is_ban:
+            twitch_commands_total.labels("ban").inc()
         elif _is_death:
             twitch_commands_total.labels("death").inc()
         elif _is_deathcheck:
@@ -901,6 +907,17 @@ class TwitchSimpBot(commands.Bot):
                 target_person = await _db_call(get_or_create_named_person, "pamder")
                 reason = parse_twitch_bamder_reason(content)
                 event_type = str(SimpEvent.EventType.BAMDER)
+            elif _is_ban:
+                parsed = parse_twitch_ban_args(content)
+                if parsed is None:
+                    await self._send_message(
+                        message,
+                        "Usage: !ban @username [reason <text>|because <text>]",
+                    )
+                    return
+                target_username, reason = parsed
+                target_person = await _db_call(get_or_create_twitch_target, target_username)
+                event_type = str(SimpEvent.EventType.BANTHEM)
             elif _is_death:
                 broadcaster = self._message_channel_name(message)
                 target_person = await _db_call(get_or_create_twitch_target, broadcaster)
@@ -968,6 +985,14 @@ class TwitchSimpBot(commands.Bot):
                             f"{_ordinal(total)} time total. "
                             f"Someone oughta do something about that..."
                         )
+                    elif event_type == str(SimpEvent.EventType.BANTHEM):
+                        today, this_week, total = await _db_call(get_banthem_counts, target_person)
+                        await self._send_message(
+                            message,
+                            f"Pamder has been a bad influence on @{target_person.name}, "
+                            f"they've acted up {total} times! "
+                            f"({today} today, {this_week} this week)"
+                        )
                     elif event_type == str(SimpEvent.EventType.DEATH):
                         game_label = event.game_name or "Unknown"
                         death_count = await _db_call(
@@ -998,6 +1023,8 @@ class TwitchSimpBot(commands.Bot):
                 _stats["cooldowns"] += 1
                 if _is_bamder:
                     twitch_cooldowns_total.labels("bamder").inc()
+                elif _is_ban:
+                    twitch_cooldowns_total.labels("ban").inc()
                 elif _is_death:
                     twitch_cooldowns_total.labels("death").inc()
                 else:
@@ -1113,6 +1140,64 @@ class TwitchSimpBot(commands.Bot):
                     twitch_cooldowns_total.labels("simp").inc()
                     logger.debug(
                         "cooldown active type=simp actor=%s target=%s channel=%s",
+                        self._message_author_name(message),
+                        target_person.name,
+                        self._message_channel_name(message),
+                    )
+
+            elif command == "ban":
+                parsed = parse_bot_ban_args(args)
+                if parsed is None:
+                    bot_name = (self.nick or self._bot_username or "bot").lstrip("@")
+                    await self._send_message(
+                        message,
+                        f"Usage: @{bot_name} ban @username [reason <text>|because <text>]"
+                    )
+                    return
+
+                target_username, reason = parsed
+                actor_input = IdentityInput(
+                    platform=Identity.Platform.TWITCH,
+                    platform_user_id=self._message_author_id(message),
+                    username=self._message_author_name(message),
+                    display_name=self._message_display_name(message),
+                )
+                target_person = await _db_call(get_or_create_twitch_target, target_username)
+                event = await _db_call(
+                    register_simp,
+                    actor=actor_input,
+                    target=target_person,
+                    platform=Identity.Platform.TWITCH,
+                    event_type=str(SimpEvent.EventType.BANTHEM),
+                    source=self._message_channel_name(message),
+                    reason=reason,
+                    raw_content=(getattr(message, "text", None) or getattr(message, "content", "") or ""),
+                    message_id=str(getattr(message, "id", "")),
+                    dedupe_key=f"twitch:mention:{getattr(message, 'id', '')}",
+                )
+                if event:
+                    _stats["events_registered"] += 1
+                    twitch_events_registered_total.labels(str(SimpEvent.EventType.BANTHEM)).inc()
+                    logger.info(
+                        "event registered platform=twitch type=banthem actor=%s target=%s channel=%s event_id=%d points=%d",
+                        self._message_author_name(message),
+                        target_person.name,
+                        self._message_channel_name(message),
+                        event.id,
+                        event.points,
+                    )
+                    today, this_week, total = await _db_call(get_banthem_counts, target_person)
+                    await self._send_message(
+                        message,
+                        f"Pamder has been a bad influence on @{target_person.name}, "
+                        f"they've acted up {total} times! "
+                        f"({today} today, {this_week} this week)"
+                    )
+                else:
+                    _stats["cooldowns"] += 1
+                    twitch_cooldowns_total.labels("ban").inc()
+                    logger.debug(
+                        "cooldown active type=banthem actor=%s target=%s channel=%s",
                         self._message_author_name(message),
                         target_person.name,
                         self._message_channel_name(message),

@@ -41,6 +41,7 @@ class SimpEvent(models.Model):
     class EventType(models.TextChoices):
         SIMP = "simp", "Simp"
         BAMDER = "bamder", "Bamder"
+        BANTHEM = "banthem", "Banthem"
         DEATH = "death", "Death"
 
     class Platform(models.TextChoices):
@@ -87,6 +88,7 @@ class ScoreAdjustment(models.Model):
     class AdjustmentType(models.TextChoices):
         SIMP = "simp", "Simp"
         BAMDER = "bamder", "Bamder"
+        BANTHEM = "banthem", "Banthem"
         DEATH = "death", "Death"
 
     target_person = models.ForeignKey(

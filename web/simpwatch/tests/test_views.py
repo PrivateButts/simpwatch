@@ -283,6 +283,79 @@ class DeathboardViewTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["bamder_total"], 2)
 
+    def test_banthem_events_are_reported_separately(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=Person.objects.create(name="prvbutts"),
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.BANTHEM,
+            source="streamer",
+            points=1,
+            reason="acted up",
+            message_id="bt1",
+        )
+
+        response = self.client.get("/api/leaderboard", {"window": "all"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(len(payload["banthem_leaderboard"]), 1)
+        self.assertEqual(payload["banthem_leaderboard"][0]["name"], "prvbutts")
+        self.assertEqual(payload["banthem_leaderboard"][0]["points"], 1)
+        self.assertEqual(len(payload["banthem_recent_events"]), 1)
+        self.assertEqual(payload["banthem_recent_events"][0]["reason"], "acted up")
+
+    def test_banthem_adjustments_are_counted(self):
+        ScoreAdjustment.objects.create(
+            target_person=Person.objects.create(name="prvbutts"),
+            adjustment_type=ScoreAdjustment.AdjustmentType.BANTHEM,
+            points_delta=2,
+            reason="manual correction",
+        )
+        response = self.client.get("/api/leaderboard", {"window": "all"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["banthem_leaderboard"][0]["points"], 2)
+
+    def test_banthem_events_do_not_affect_simp_or_narc_leaderboards(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=Person.objects.create(name="prvbutts"),
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.BANTHEM,
+            source="streamer",
+            points=1,
+            reason="bad behavior",
+            message_id="bt2",
+        )
+
+        response = self.client.get("/api/leaderboard", {"window": "all"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["leaderboard"], [])
+        self.assertEqual(payload["narc_leaderboard"], [])
+
+    def test_banthem_api_still_works_when_adjustment_type_column_is_missing(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=Person.objects.create(name="prvbutts"),
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.BANTHEM,
+            source="streamer",
+            points=1,
+            reason="acted up",
+            message_id="bt3",
+        )
+
+        with patch("simpwatch.scoring.score_adjustment_has_columns", return_value=False):
+            response = self.client.get("/api/leaderboard", {"window": "all"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["banthem_leaderboard"][0]["name"], "prvbutts")
+        self.assertEqual(payload["banthem_leaderboard"][0]["points"], 1)
+
     def test_bamder_events_do_not_affect_simp_or_narc_leaderboards(self):
         SimpEvent.objects.create(
             actor_identity=self.actor_identity,
@@ -344,6 +417,8 @@ class HelpSectionViewTests(TestCase):
         content = response.content.decode()
         self.assertIn("!simp", content)
         self.assertIn("!bamder", content)
+        self.assertIn("!ban @username", content)
+        self.assertIn("ban @username", content)
         self.assertIn("/simp", content)
         self.assertIn("simp @username", content)
         self.assertIn("simpcheck", content)
@@ -351,6 +426,36 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("!deathcheck", content)
         self.assertNotIn("<td class=\"cmd\">!death</td>", content)
         self.assertNotIn("<td class=\"cmd\">!died</td>", content)
+
+    @override_settings(
+        TWITCH_CHANNELS=["streamer1"],
+        TWITCH_BOT_USERNAME="simpbot",
+    )
+    def test_banthem_panels_rendered_on_page(self):
+        cache.clear()
+        SimpEvent.objects.create(
+            actor_identity=Identity.objects.create(
+                person=Person.objects.create(name="panel-caller"),
+                platform=Identity.Platform.TWITCH,
+                platform_user_id="panel-actor-1",
+                username="panelcaller",
+                display_name="PanelCaller",
+            ),
+            target_person=Person.objects.create(name="prvbutts"),
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.BANTHEM,
+            source="streamer1",
+            points=1,
+            reason="acted up",
+            message_id="page-bt1",
+        )
+
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Most likely to be Banned", content)
+        self.assertIn("Recent Ban Requests", content)
+        self.assertIn("prvbutts", content)
 
     @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_watched_channels_shown_when_configured(self):

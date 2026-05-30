@@ -200,6 +200,13 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def _format_banthem_reply(target_name: str, total: int) -> str:
+    return (
+        f"Pamder has been a bad influence on @{target_name}, "
+        f"they've acted up {total} times!"
+    )
+
+
 def _validate_bot_token_for_eventsub(
     access_token: str,
     expected_bot_id: str,
@@ -620,27 +627,27 @@ class TwitchSimpBot(commands.Bot):
                     "Skipping Twitch reply for channel=%s: missing active broadcaster grant",
                     channel_name,
                 )
-                return
-            try:
-                await message.respond(content)
-                return
-            except HTTPException as exc:
-                status = getattr(exc, "status", None)
-                detail = str(exc)
-                channel_name = self._message_channel_name(message)
-                if status == 401 and "channel:bot" in detail:
-                    logger.error(
-                        "Twitch reply unauthorized for channel=%s. "
-                        "Either grant channel:bot to this app for that broadcaster "
-                        "or make the bot a moderator in the channel.",
-                        channel_name,
-                    )
-                else:
-                    logger.exception(
-                        "Failed to send EventSub response via message.respond"
-                    )
-            except Exception:
-                logger.exception("Failed to send EventSub response via message.respond")
+            else:
+                try:
+                    await message.respond(content)
+                    return
+                except HTTPException as exc:
+                    status = getattr(exc, "status", None)
+                    detail = str(exc)
+                    channel_name = self._message_channel_name(message)
+                    if status == 401 and "channel:bot" in detail:
+                        logger.error(
+                            "Twitch reply unauthorized for channel=%s. "
+                            "Either grant channel:bot to this app for that broadcaster "
+                            "or make the bot a moderator in the channel.",
+                            channel_name,
+                        )
+                    else:
+                        logger.exception(
+                            "Failed to send EventSub response via message.respond"
+                        )
+                except Exception:
+                    logger.exception("Failed to send EventSub response via message.respond")
 
         # Fallback: try channel.send (IRC or test mocks)
         channel = getattr(message, "channel", None)
@@ -989,9 +996,7 @@ class TwitchSimpBot(commands.Bot):
                         today, this_week, total = await _db_call(get_banthem_counts, target_person)
                         await self._send_message(
                             message,
-                            f"Pamder has been a bad influence on @{target_person.name}, "
-                            f"they've acted up {total} times! "
-                            f"({today} today, {this_week} this week)"
+                            _format_banthem_reply(target_person.name, total),
                         )
                     elif event_type == str(SimpEvent.EventType.DEATH):
                         game_label = event.game_name or "Unknown"
@@ -1189,9 +1194,7 @@ class TwitchSimpBot(commands.Bot):
                     today, this_week, total = await _db_call(get_banthem_counts, target_person)
                     await self._send_message(
                         message,
-                        f"Pamder has been a bad influence on @{target_person.name}, "
-                        f"they've acted up {total} times! "
-                        f"({today} today, {this_week} this week)"
+                        _format_banthem_reply(target_person.name, total),
                     )
                 else:
                     _stats["cooldowns"] += 1

@@ -100,7 +100,7 @@ class TwitchCommandParsingTests(SimpleTestCase):
     def test_parse_ban_args_ignores_non_reason_tail(self):
         self.assertEqual(
             parse_twitch_ban_args("!ban @SomeUser definitely suspicious"),
-            ("someuser", ""),
+            ("someuser", "definitely suspicious"),
         )
 
     def test_parse_ban_args_rejects_missing_mention(self):
@@ -117,6 +117,12 @@ class BotMentionCommandParsingTests(SimpleTestCase):
     def test_parse_bot_ban_args_with_reason(self):
         self.assertEqual(
             parse_bot_ban_args(["@SomeUser", "reason", "acted", "up"]),
+            ("someuser", "acted up"),
+        )
+
+    def test_parse_bot_ban_args_with_free_text_reason(self):
+        self.assertEqual(
+            parse_bot_ban_args(["@SomeUser", "acted", "up"]),
             ("someuser", "acted up"),
         )
 

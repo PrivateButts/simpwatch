@@ -445,6 +445,25 @@ class ProcessMessageBanTests(SimpleTestCase):
         sent: str = msg.channel.send.call_args[0][0]
         self.assertIn("@prvbutts", sent)
         self.assertIn("7 times", sent)
+        self.assertNotIn("today", sent)
+        self.assertNotIn("this week", sent)
+
+    async def test_ban_free_text_reason_is_passed_to_register(self):
+        bot = _make_bot()
+        msg = _message("!ban @prvbutts acted up again", channel="streamerchan")
+        fake_target = SimpleNamespace(name="prvbutts")
+        fake_event = SimpleNamespace(id=8, points=1)
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event) as mock_register,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        self.assertEqual(mock_register.call_args.kwargs["reason"], "acted up again")
 
     async def test_ban_missing_target_sends_usage(self):
         bot = _make_bot()
@@ -484,6 +503,26 @@ class BotMentionBanCommandTests(SimpleTestCase):
 
         mock_target.assert_called_once_with("prvbutts")
         msg.channel.send.assert_awaited_once()
+
+    async def test_bot_ban_command_with_free_text_reason_is_passed_to_register(self):
+        bot = _make_bot(nick="simpbot")
+        msg = _message("@simpbot ban @prvbutts acted up again", channel="streamerchan")
+        fake_target = SimpleNamespace(name="prvbutts")
+        fake_event = SimpleNamespace(id=18, points=1)
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event) as mock_register,
+            patch(
+                "services.twitch_bot.main.get_banthem_counts", return_value=(1, 1, 1)
+            ),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        self.assertEqual(mock_register.call_args.kwargs["reason"], "acted up again")
 
     async def test_bot_ban_command_without_target_shows_usage(self):
         bot = _make_bot(nick="simpbot")
@@ -842,7 +881,7 @@ class PrometheusMetricsTests(SimpleTestCase):
 
 
 class ReplyAuthorizationTests(SimpleTestCase):
-    async def test_eventsub_send_skips_when_grant_missing(self):
+    async def test_eventsub_send_falls_back_to_channel_send_when_grant_missing(self):
         bot = _make_bot(reply_channels={"streamerchan"})
         msg = _message("!simp", channel="streamerchan")
         msg.respond = AsyncMock()
@@ -851,6 +890,7 @@ class ReplyAuthorizationTests(SimpleTestCase):
             await bot._send_message(msg, "hello")
 
         msg.respond.assert_not_awaited()
+        msg.channel.send.assert_awaited_once_with("hello")
 
     async def test_eventsub_send_uses_respond_when_grant_present(self):
         bot = _make_bot(reply_channels={"streamerchan"})

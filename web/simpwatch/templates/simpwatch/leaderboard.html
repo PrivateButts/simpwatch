@@ -484,10 +484,7 @@
         <div class="event-list">
           {% for event in banthem_recent_events %}
           <div class="event">
-            <div><strong>{{ event.actor_identity.username }}</strong> marked <strong>{{ event.target_person.name }}</strong> as likely to be banned.</div>
-            {% if event.reason %}
-            <div class="reason">Reason: {{ event.reason }}</div>
-            {% endif %}
+            <div><strong>{{ event.actor_identity.username }}</strong> wants <strong>{{ event.target_person.name }}</strong> to be banned{% if event.reason %} for {{ event.reason }}{% endif %}.</div>
             <div class="meta">{{ event.platform }} · {{ event.source }} · <time class="js-local-time" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></div>
           </div>
           {% empty %}
@@ -543,16 +540,16 @@
                   <td>Log a targeted banthem incident through the bot mention command</td>
                 </tr>
                 <tr>
+                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} ban @username reason &lt;text&gt;</td>
+                  <td>Log a targeted banthem incident with a reason</td>
+                </tr>
+                <tr>
                   <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simpcheck [user]</td>
                   <td>Check rank and score for a user</td>
                 </tr>
                 <tr>
                   <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} standings [n]</td>
                   <td>Show top N standings (default 3, max 10)</td>
-                </tr>
-                <tr>
-                  <td class="cmd">!deathcheck</td>
-                  <td>Show how many times the broadcaster has died in the current game</td>
                 </tr>
               </tbody>
             </table>

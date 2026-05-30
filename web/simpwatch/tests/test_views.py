@@ -238,6 +238,7 @@ class DeathboardViewTests(TestCase):
         self.assertIn("Game Filter", content)
         self.assertIn("!death", content)
         self.assertIn("!died", content)
+        self.assertIn("!deathcheck", content)
         self.assertNotIn("!simp", content)
         self.assertNotIn("!bamder", content)
 
@@ -419,11 +420,12 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("!bamder", content)
         self.assertIn("!ban @username", content)
         self.assertIn("ban @username", content)
+        self.assertIn("ban @username reason", content)
         self.assertIn("/simp", content)
         self.assertIn("simp @username", content)
         self.assertIn("simpcheck", content)
         self.assertIn("standings", content)
-        self.assertIn("!deathcheck", content)
+        self.assertNotIn("!deathcheck", content)
         self.assertNotIn("<td class=\"cmd\">!death</td>", content)
         self.assertNotIn("<td class=\"cmd\">!died</td>", content)
 
@@ -456,6 +458,7 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("Most likely to be Banned", content)
         self.assertIn("Recent Ban Requests", content)
         self.assertIn("prvbutts", content)
+        self.assertIn("wants <strong>prvbutts</strong> to be banned for acted up.", content)
 
     @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_watched_channels_shown_when_configured(self):

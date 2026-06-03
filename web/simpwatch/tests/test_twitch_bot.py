@@ -443,7 +443,8 @@ class ProcessMessageBanTests(SimpleTestCase):
 
         msg.channel.send.assert_awaited_once()
         sent: str = msg.channel.send.call_args[0][0]
-        self.assertIn("@prvbutts", sent)
+        self.assertIn("prvbutts", sent)
+        self.assertNotIn("@prvbutts", sent)
         self.assertIn("7 times", sent)
         self.assertNotIn("today", sent)
         self.assertNotIn("this week", sent)

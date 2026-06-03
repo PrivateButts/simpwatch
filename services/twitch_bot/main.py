@@ -200,13 +200,16 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def _format_banthem_reply(target_name: str, total: int) -> str:
+def _format_banthem_reply(actor_name: str, target_name: str, reason: str, total: int) -> str:
+    if reason:
+        return (
+            f"{actor_name} thinks {target_name} should be banned for {reason}! "
+            f"{target_name} has acted up {total} times, unbelievable!"
+        )
     return (
-        f"Pamder has been a bad influence on @{target_name}, "
-        f"they've acted up {total} times!"
+        f"{target_name} is being a stinker and should be banned! "
+        f"{target_name} has acted up {total} times, unbelievable!"
     )
-
-
 def _validate_bot_token_for_eventsub(
     access_token: str,
     expected_bot_id: str,
@@ -996,7 +999,12 @@ class TwitchSimpBot(commands.Bot):
                         today, this_week, total = await _db_call(get_banthem_counts, target_person)
                         await self._send_message(
                             message,
-                            _format_banthem_reply(target_person.name, total),
+                            _format_banthem_reply(
+                                actor_input.display_name or actor_input.username,
+                                target_person.name,
+                                reason,
+                                total,
+                            ),
                         )
                     elif event_type == str(SimpEvent.EventType.DEATH):
                         game_label = event.game_name or "Unknown"
@@ -1194,7 +1202,12 @@ class TwitchSimpBot(commands.Bot):
                     today, this_week, total = await _db_call(get_banthem_counts, target_person)
                     await self._send_message(
                         message,
-                        _format_banthem_reply(target_person.name, total),
+                        _format_banthem_reply(
+                                actor_input.display_name or actor_input.username,
+                                target_person.name,
+                                reason,
+                                total,
+                            ),
                     )
                 else:
                     _stats["cooldowns"] += 1

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SIMP-lympics Leaderboard</title>
+  <title>Crime Board</title>
   <style>
     :root {
       --bg: #f3f4ee;
@@ -79,14 +79,7 @@
       flex-wrap: wrap;
     }
 
-    .tabs {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 16px;
-    }
-
-    .tab {
+    .link-pill {
       display: inline-block;
       text-decoration: none;
       color: var(--text);
@@ -97,17 +90,46 @@
       font-size: 0.92rem;
     }
 
-    .tab.active {
+    .link-pill.active {
       background: var(--accent-soft);
       border-color: var(--accent);
       color: var(--accent);
       font-weight: 700;
     }
 
+    .filter-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .filter-row label {
+      font-weight: 700;
+      font-size: 0.94rem;
+    }
+
+    .filter-row select {
+      min-width: 260px;
+      max-width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    .filter-hint {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
     .grid {
       display: grid;
       gap: 16px;
-      grid-template-columns: 2fr 1.4fr;
+      grid-template-columns: 1.6fr 1.2fr 1fr;
     }
 
     .panel {
@@ -125,62 +147,60 @@
 
     ol {
       margin: 0;
-      padding-left: 22px;
+      padding-left: 0;
+        counter-reset: row-number;
+      display: grid;
+      gap: 8px;
     }
 
+    ol li {
+      counter-increment: row-number;
+    }
+
+    ol li::before {
+      content: counter(row-number) ". ";
+      color: var(--accent);
+      font-weight: 700;
+      margin-right: 8px;
+      min-width: 24px;
+      display: inline-block;
+    }
     li {
-      padding: 6px 0;
+      line-height: 1.35;
+      padding: 2px 0;
       display: flex;
       justify-content: space-between;
       gap: 10px;
-      border-bottom: 1px dashed var(--event-rule);
     }
 
-    li:last-child {
-      border-bottom: none;
-    }
-
-    .points {
+    .count {
       color: var(--accent);
       font-weight: 700;
+      white-space: nowrap;
     }
 
     .event-list {
       display: grid;
       gap: 8px;
-      max-height: 450px;
-      overflow-y: auto;
     }
 
     .event {
       border: 1px solid var(--event-border);
+      background: var(--event-bg);
       border-radius: 10px;
       padding: 10px;
+    }
+
+    .event .meta {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+
+    .event .reason {
+      color: var(--muted);
       font-size: 0.92rem;
-      background: var(--event-bg);
-    }
-
-    .reason {
-      margin-top: 6px;
-      color: var(--muted);
-      font-size: 0.86rem;
-      font-style: italic;
-    }
-
-    .meta {
-      margin-top: 5px;
-      color: var(--muted);
-      font-size: 0.8rem;
-    }
-
-    @media (max-width: 820px) {
-      .grid {
-        grid-template-columns: 1fr;
-      }
-
-      .help-grid {
-        grid-template-columns: 1fr;
-      }
+      margin-top: 4px;
     }
 
     .help-section {
@@ -257,23 +277,6 @@
       content: "Copied";
       color: #35b56a;
       opacity: 1;
-    }
-
-    .channel-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-
-    .channel-list li {
-      padding: 5px 0;
-      border-bottom: 1px dashed var(--event-rule);
-      font-size: 0.88rem;
-      display: block;
-    }
-
-    .channel-list li:last-child {
-      border-bottom: none;
     }
 
     .channel-cards {
@@ -376,122 +379,90 @@
       color: var(--muted);
       font-size: 0.88rem;
     }
+
+    @media (max-width: 1200px) {
+      .grid {
+        grid-template-columns: 1.6fr 1.2fr;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .help-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 
 <body>
   <main class="wrap">
-    <h1>SIMP-lympics</h1>
-    <p class="subtitle">Public leaderboard for the most committed simp behavior.</p>
-
-    <nav class="tabs" aria-label="Leaderboard windows">
-      {% for w in windows %}
-      <a class="tab {% if window == w %}active{% endif %}" href="/?window={{ w }}">{{ w }}</a>
-      {% endfor %}
-    </nav>
+    <h1>Crime Board</h1>
+    <p class="subtitle">Who's the criminal mastermind?</p>
 
     <nav class="top-links" aria-label="Leaderboard navigation">
-      <a href="/" class="tab active">Main Leaderboard</a>
-      <a href="/deathboard" class="tab">Death Board</a>
-      <a href="/crimeboard" class="tab">Crime Board</a>
+      <a href="/" class="link-pill">Main Leaderboard</a>
+      <a href="/deathboard" class="link-pill">Death Board</a>
+      <a href="/crimeboard" class="link-pill active">Crime Board</a>
     </nav>
+
+    <form method="get" class="filter-row" aria-label="Crimeboard game filter">
+      <label for="game-filter">Game Filter</label>
+      <select id="game-filter" name="game" onchange="this.form.submit()">
+        <option value=""{% if not selected_game_id %} selected{% endif %}>All games</option>
+        {% for game in games %}
+        <option value="{{ game.game_id }}"{% if selected_game_id == game.game_id %} selected{% endif %}>{{ game.game_name }}</option>
+        {% endfor %}
+      </select>
+    </form>
 
     <section class="grid">
       <article class="panel">
-        <h2>Thirsty Bitches (respectfully) ({{ window }})</h2>
-        {% if rows %}
+        <h2>{% if selected_game_name %}{{ selected_game_name }}{% else %}Overall{% endif %}:</h2>
         <ol>
           {% for row in rows %}
           <li>
             <span>{{ row.person.name }}</span>
-            <span class="points">{{ row.points }} pts</span>
+            <span class="count">{{ row.crime_count }} crime{% if row.crime_count != 1 %}s{% endif %}</span>
           </li>
-          {% endfor %}
-        </ol>
-        {% else %}
-        <p>No simp events yet for this window.</p>
-        {% endif %}
-      </article>
-
-      <article class="panel">
-        <h2>Narcs ({{ window }})</h2>
-        {% if narc_rows %}
-        <ol>
-          {% for row in narc_rows %}
-          <li>
-            <span>{{ row.person.name }}</span>
-            <span class="points">{{ row.callout_count }} calls</span>
-          </li>
-          {% endfor %}
-        </ol>
-        {% else %}
-        <p>No narc activity yet for this window.</p>
-        {% endif %}
-      </article>
-
-      <article class="panel">
-        <h2>Bamder Watch ({{ window }})</h2>
-        <p><strong>Total incidents:</strong> <span class="points">{{ bamder_total }}</span></p>
-        <div class="event-list">
-          {% for event in bamder_recent_events %}
-          <div class="event">
-            <div><strong>{{ event.actor_identity.username }}</strong> logged a bamder incident.</div>
-            {% if event.reason %}
-            <div class="reason">Reason: {{ event.reason }}</div>
-            {% endif %}
-            <div class="meta">{{ event.platform }} · {{ event.source }} · <time class="js-local-time" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></div>
-          </div>
           {% empty %}
-          <p>No bamder incidents yet for this window.</p>
+          <li>No crimes logged yet.</li>
           {% endfor %}
-        </div>
+        </ol>
       </article>
 
       <article class="panel">
-        <h2>Recent Calls</h2>
+        <h2>Recent Crimes</h2>
         <div class="event-list">
           {% for event in recent_events %}
           <div class="event">
-            <div><strong>{{ event.actor_identity.username }}</strong> called <strong>{{ event.target_person.name }}</strong> out for simping (+{{ event.points }})</div>
+            <div><strong>{{ event.target_person.name }}</strong> committed a crime in <strong>{% if event.game_name %}{{ event.game_name }}{% else %}Unknown{% endif %}</strong>.</div>
+            <div class="meta">called by {{ event.actor_identity.username }} · {{ event.platform }} · {{ event.source }} · <time>{{ event.created_at }}</time></div>
             {% if event.reason %}
             <div class="reason">Reason: {{ event.reason }}</div>
             {% endif %}
-            <div class="meta">{{ event.platform }} · {{ event.source }} · <time class="js-local-time" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></div>
           </div>
           {% empty %}
-          <p>No recent events.</p>
+          <p>No crime events yet.</p>
           {% endfor %}
         </div>
       </article>
 
       <article class="panel">
-        <h2>Most likely to be Banned ({{ window }})</h2>
-        {% if banthem_rows %}
+        <h2>Most Criminal Game</h2>
         <ol>
-          {% for row in banthem_rows %}
+          {% for game in most_criminal_games %}
           <li>
-            <span>{{ row.person.name }}</span>
-            <span class="points">{{ row.points }} bans</span>
+            <span>{{ game.game_name }}</span>
+            <span class="count">{{ game.total_crimes }} crime{% if game.total_crimes != 1 %}s{% endif %}</span>
           </li>
+          {% empty %}
+          <li>No crimes logged yet.</li>
           {% endfor %}
         </ol>
-        {% else %}
-        <p>No banthem incidents yet for this window.</p>
-        {% endif %}
-      </article>
-
-      <article class="panel">
-        <h2>Recent Ban Requests ({{ window }})</h2>
-        <div class="event-list">
-          {% for event in banthem_recent_events %}
-          <div class="event">
-            <div><strong>{{ event.actor_identity.username }}</strong> wants <strong>{{ event.target_person.name }}</strong> to be banned{% if event.reason %} for {{ event.reason }}{% endif %}.</div>
-            <div class="meta">{{ event.platform }} · {{ event.source }} · <time class="js-local-time" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></div>
-          </div>
-          {% empty %}
-          <p>No recent ban requests for this window.</p>
-          {% endfor %}
-        </div>
       </article>
     </section>
 
@@ -505,52 +476,12 @@
             <table class="cmd-table">
               <tbody>
                 <tr>
-                  <td class="cmd">!simp</td>
-                  <td>Award a simp point to the channel broadcaster</td>
+                  <td class="cmd">!criminal</td>
+                  <td>Increment the broadcaster crime counter for their current game — reason required</td>
                 </tr>
                 <tr>
-                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simp @username</td>
-                  <td>Award a simp point to a specific user</td>
-                </tr>
-                <tr>
-                  <td class="cmd">!simp reason &lt;text&gt;</td>
-                  <td>Award a simp point with a reason</td>
-                </tr>
-                <tr>
-                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simp @username reason &lt;text&gt;</td>
-                  <td>Award a targeted simp point with a reason</td>
-                </tr>
-                <tr>
-                  <td class="cmd">!bamder</td>
-                  <td>Log a bamder incident</td>
-                </tr>
-                <tr>
-                  <td class="cmd">!bamder reason &lt;text&gt;</td>
-                  <td>Log a bamder incident with a reason</td>
-                </tr>
-                <tr>
-                  <td class="cmd">!ban @username</td>
-                  <td>Log a banthem incident for a specific user</td>
-                </tr>
-                <tr>
-                  <td class="cmd">!ban @username reason &lt;text&gt;</td>
-                  <td>Log a banthem incident with a reason</td>
-                </tr>
-                <tr>
-                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} ban @username</td>
-                  <td>Log a targeted banthem incident through the bot mention command</td>
-                </tr>
-                <tr>
-                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} ban @username reason &lt;text&gt;</td>
-                  <td>Log a targeted banthem incident with a reason</td>
-                </tr>
-                <tr>
-                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} simpcheck [user]</td>
-                  <td>Check rank and score for a user</td>
-                </tr>
-                <tr>
-                  <td class="cmd">@{% if twitch_bot_username %}{{ twitch_bot_username }}{% else %}bot{% endif %} standings [n]</td>
-                  <td>Show top N standings (default 3, max 10)</td>
+                  <td class="cmd">!backgroundcheck</td>
+                  <td>Show how many times the broadcaster has committed a crime in the current game</td>
                 </tr>
               </tbody>
             </table>
@@ -559,21 +490,11 @@
           <div class="help-right">
             {% if discord_configured %}
             <div>
-              <h3>Discord Commands</h3>
-              <table class="cmd-table">
-                <tbody>
-                  <tr>
-                    <td class="cmd">/simp target:&lt;user&gt;</td>
-                    <td>Register a simp callout for someone</td>
-                  </tr>
-                  <tr>
-                    <td class="cmd">/simp target:&lt;user&gt; reason:&lt;text&gt;</td>
-                    <td>Register a simp callout with a reason</td>
-                  </tr>
-                </tbody>
-              </table>
+              <h3>Discord</h3>
+              <p class="muted">No crime commands are configured for Discord.</p>
             </div>
             {% endif %}
+
             {% if watched_channels %}
             <div>
               <h3>Watched Channels</h3>
@@ -606,6 +527,7 @@
               </div>
             </div>
             {% endif %}
+
             {% if not twitch_configured and not discord_configured and not watched_channels %}
             <p class="muted">No integrations configured.</p>
             {% endif %}
@@ -616,33 +538,7 @@
   </main>
   <script>
   (function () {
-    const localTimeNodes = document.querySelectorAll('.js-local-time');
     const commandCells = document.querySelectorAll('.cmd');
-
-    function renderLocalTimes() {
-      if (!localTimeNodes.length) {
-        return;
-      }
-
-      const formatter = new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      });
-
-      localTimeNodes.forEach((el) => {
-        const isoValue = el.getAttribute('datetime');
-        if (!isoValue) {
-          return;
-        }
-        const parsed = new Date(isoValue);
-        if (Number.isNaN(parsed.getTime())) {
-          return;
-        }
-
-        el.textContent = formatter.format(parsed);
-        el.setAttribute('title', parsed.toLocaleString());
-      });
-    }
 
     async function copyText(text) {
       if (navigator.clipboard && window.isSecureContext) {
@@ -702,8 +598,6 @@
         }
       });
     });
-
-    renderLocalTimes();
   })();
   </script>
 </body>

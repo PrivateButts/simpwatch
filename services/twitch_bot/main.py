@@ -90,7 +90,9 @@ from simpwatch.command_parsing import (  # noqa: E402
     parse_bot_mention_command,
     parse_twitch_ban_args,
     parse_twitch_bamder_reason,
+    parse_twitch_criminal_reason,
     parse_twitch_reason,
+    parse_twitch_target,
 )
 from simpwatch.metrics import (  # noqa: E402
     twitch_commands_total,
@@ -105,6 +107,7 @@ from simpwatch.scoring import (  # noqa: E402
     IdentityInput,
     get_banthem_counts,
     get_bamder_counts,
+    get_crime_count_for_person_in_game,
     get_death_count_for_person_in_game,
     get_leaderboard_entries,
     get_or_create_named_person,
@@ -709,6 +712,42 @@ class TwitchSimpBot(commands.Bot):
             or TwitchSimpBot._message_author_name(message)
         )
 
+    async def _send_crimecheck_summary(
+        self, message, target_username: str | None = None
+    ) -> None:
+        broadcaster = self._message_channel_name(message)
+        lookup = target_username or broadcaster
+        target_person = await _db_call(get_or_create_twitch_target, lookup)
+        game_id, game_name = await asyncio.to_thread(
+            _fetch_twitch_channel_game,
+            broadcaster,
+        )
+        if not game_id:
+            if target_username:
+                await self._send_message(
+                    message,
+                    f"I can't tell what game {broadcaster} is playing right now.",
+                )
+                return
+            await self._send_message(
+                message,
+                f"I can't tell what game {broadcaster} is playing right now.",
+            )
+            return
+
+        crime_count = await _db_call(
+            get_crime_count_for_person_in_game,
+            target_person,
+            game_id,
+        )
+        game_label = game_name or "Unknown"
+        crime_word = "crime" if crime_count == 1 else "crimes"
+        display = (target_username or broadcaster).upper()
+        await self._send_message(
+            message,
+            f"{display} has committed {crime_count} {crime_word} while playing {game_label}.",
+        )
+
     async def _send_deathcheck_summary(self, message) -> None:
         broadcaster = self._message_channel_name(message)
         target_person = await _db_call(get_or_create_twitch_target, broadcaster)
@@ -878,6 +917,10 @@ class TwitchSimpBot(commands.Bot):
         _is_simp = lowered == "!simp" or lowered.startswith("!simp ")
         _is_ban = lowered == "!ban" or lowered.startswith("!ban ")
         _is_bamder = lowered == "!bamder" or lowered.startswith("!bamder ")
+        _is_criminal = lowered == "!criminal" or lowered.startswith("!criminal ")
+        _is_backgroundcheck = (
+            lowered == "!backgroundcheck" or lowered.startswith("!backgroundcheck ")
+        )
         _is_death = (
             lowered == "!death"
             or lowered.startswith("!death ")
@@ -885,7 +928,7 @@ class TwitchSimpBot(commands.Bot):
             or lowered.startswith("!died ")
         )
         _is_deathcheck = lowered == "!deathcheck" or lowered.startswith("!deathcheck ")
-        if not _is_simp and not _is_ban and not _is_bamder and not _is_death and not _is_deathcheck:
+        if not _is_simp and not _is_ban and not _is_bamder and not _is_criminal and not _is_backgroundcheck and not _is_death and not _is_deathcheck:
             return
 
         _stats["commands_seen"] += 1
@@ -893,6 +936,10 @@ class TwitchSimpBot(commands.Bot):
             twitch_commands_total.labels("bamder").inc()
         elif _is_ban:
             twitch_commands_total.labels("ban").inc()
+        elif _is_criminal:
+            twitch_commands_total.labels("criminal").inc()
+        elif _is_backgroundcheck:
+            twitch_commands_total.labels("backgroundcheck").inc()
         elif _is_death:
             twitch_commands_total.labels("death").inc()
         elif _is_deathcheck:
@@ -925,6 +972,27 @@ class TwitchSimpBot(commands.Bot):
                 target_username, reason = parsed
                 target_person = await _db_call(get_or_create_twitch_target, target_username)
                 event_type = str(SimpEvent.EventType.BANTHEM)
+            elif _is_criminal:
+                reason = parse_twitch_criminal_reason(content)
+                if not reason:
+                    await self._send_message(
+                        message,
+                        "Usage: !criminal <reason> — a reason is required.",
+                    )
+                    return
+                broadcaster = self._message_channel_name(message)
+                target_person = await _db_call(get_or_create_twitch_target, broadcaster)
+                event_type = str(SimpEvent.EventType.CRIMINAL)
+                game_id, game_name = await asyncio.to_thread(
+                    _fetch_twitch_channel_game,
+                    broadcaster,
+                )
+            elif _is_backgroundcheck:
+                target_username = parse_twitch_target(content)
+                await self._send_crimecheck_summary(
+                    message, target_username=target_username
+                )
+                return
             elif _is_death:
                 broadcaster = self._message_channel_name(message)
                 target_person = await _db_call(get_or_create_twitch_target, broadcaster)
@@ -998,6 +1066,18 @@ class TwitchSimpBot(commands.Bot):
                             message,
                             _format_banthem_reply(target_person.name, total),
                         )
+                    elif event_type == str(SimpEvent.EventType.CRIMINAL):
+                        crime_count = await _db_call(
+                            get_crime_count_for_person_in_game,
+                            target_person,
+                            event.game_id,
+                        )
+                        crime_word = "crime" if crime_count == 1 else "crimes"
+                        await self._send_message(
+                            message,
+                            f"Call the Sheriff! {target_person.name} is wanted for {event.reason}! "
+                            f"This is {crime_count} {crime_word} they have committed!!",
+                        )
                     elif event_type == str(SimpEvent.EventType.DEATH):
                         game_label = event.game_name or "Unknown"
                         death_count = await _db_call(
@@ -1030,6 +1110,8 @@ class TwitchSimpBot(commands.Bot):
                     twitch_cooldowns_total.labels("bamder").inc()
                 elif _is_ban:
                     twitch_cooldowns_total.labels("ban").inc()
+                elif _is_criminal:
+                    twitch_cooldowns_total.labels("criminal").inc()
                 elif _is_death:
                     twitch_cooldowns_total.labels("death").inc()
                 else:
@@ -1070,6 +1152,12 @@ class TwitchSimpBot(commands.Bot):
                         message,
                         f"{target_username} is ranked #{rank} with {score} point(s)."
                     )
+
+            elif command == "backgroundcheck":
+                target_username = normalize_username(args[0]) if args else None
+                await self._send_crimecheck_summary(
+                    message, target_username=target_username
+                )
 
             elif command == "deathcheck":
                 await self._send_deathcheck_summary(message)

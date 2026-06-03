@@ -8,6 +8,7 @@ from simpwatch.scoring import (
     IdentityInput,
     get_banthem_counts,
     get_bamder_counts,
+    get_crime_count_for_person_in_game,
     get_death_count_for_person_in_game,
     get_leaderboard_entries,
     get_or_create_identity,
@@ -165,6 +166,34 @@ class ScoringTests(TestCase):
         self.assertEqual(event.event_type, SimpEvent.EventType.DEATH)
         self.assertEqual(event.game_id, "12345")
         self.assertEqual(event.game_name, "Elden Ring")
+
+    def test_register_criminal_event_type_with_game_name(self):
+        target = Person.objects.create(name="streamer")
+        event = register_simp(
+            actor=IdentityInput(
+                platform=str(Identity.Platform.TWITCH),
+                platform_user_id="actor-4",
+                username="caller4",
+                display_name="Caller4",
+            ),
+            target=target,
+            platform=str(Identity.Platform.TWITCH),
+            event_type=str(SimpEvent.EventType.CRIMINAL),
+            source="streamer_channel",
+            reason="stole a cookie",
+            game_id="67890",
+            game_name="GTA V",
+            raw_content="!criminal stole a cookie",
+            message_id="m4",
+            dedupe_key="twitch:m4",
+        )
+
+        self.assertIsNotNone(event)
+        event = cast(SimpEvent, event)
+        self.assertEqual(event.event_type, SimpEvent.EventType.CRIMINAL)
+        self.assertEqual(event.game_id, "67890")
+        self.assertEqual(event.game_name, "GTA V")
+        self.assertEqual(event.reason, "stole a cookie")
 
 
 class LeaderboardQueryTests(TestCase):
@@ -527,3 +556,83 @@ class DeathCountTests(TestCase):
             points=7,
         )
         self.assertEqual(get_death_count_for_person_in_game(target, "999"), 7)
+
+
+class CrimeCountTests(TestCase):
+    def test_get_crime_count_for_person_in_game_counts_matching_game_only(self):
+        target = Person.objects.create(name="streamer")
+        actor = Identity.objects.create(
+            person=Person.objects.create(name="caller"),
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="actor-c-1",
+            username="caller",
+            display_name="caller",
+        )
+
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="123",
+            game_name="GTA V",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="123",
+            game_name="GTA V",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="456",
+            game_name="Cyberpunk",
+            source="streamer",
+            points=1,
+        )
+
+        self.assertEqual(get_crime_count_for_person_in_game(target, "123"), 2)
+        self.assertEqual(get_crime_count_for_person_in_game(target, "456"), 1)
+        self.assertEqual(get_crime_count_for_person_in_game(target, "999"), 0)
+
+    def test_get_crime_count_for_person_in_game_includes_adjustments(self):
+        target = Person.objects.create(name="streamer")
+        ScoreAdjustment.objects.create(
+            target_person=target,
+            adjustment_type=ScoreAdjustment.AdjustmentType.CRIMINAL,
+            points_delta=3,
+            game_id="123",
+            game_name="GTA V",
+            reason="manual correction",
+        )
+        self.assertEqual(get_crime_count_for_person_in_game(target, "123"), 3)
+
+    def test_multi_point_crime_event_is_summed(self):
+        target = Person.objects.create(name="streamer")
+        actor = Identity.objects.create(
+            person=Person.objects.create(name="caller"),
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="actor-c-mp",
+            username="caller2",
+            display_name="caller2",
+        )
+        SimpEvent.objects.create(
+            actor_identity=actor,
+            target_person=target,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="999",
+            game_name="Some Game",
+            source="streamer",
+            points=7,
+        )
+        self.assertEqual(get_crime_count_for_person_in_game(target, "999"), 7)

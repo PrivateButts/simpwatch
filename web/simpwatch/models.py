@@ -42,6 +42,7 @@ class SimpEvent(models.Model):
         SIMP = "simp", "Simp"
         BAMDER = "bamder", "Bamder"
         BANTHEM = "banthem", "Banthem"
+        CRIMINAL = "criminal", "Criminal"
         DEATH = "death", "Death"
 
     class Platform(models.TextChoices):
@@ -89,6 +90,7 @@ class ScoreAdjustment(models.Model):
         SIMP = "simp", "Simp"
         BAMDER = "bamder", "Bamder"
         BANTHEM = "banthem", "Banthem"
+        CRIMINAL = "criminal", "Criminal"
         DEATH = "death", "Death"
 
     target_person = models.ForeignKey(
@@ -112,13 +114,14 @@ class ScoreAdjustment(models.Model):
         indexes = [models.Index(fields=["created_at"])]
 
     def clean(self):
-        if self.adjustment_type != self.AdjustmentType.DEATH and (
-            self.game_id or self.game_name
-        ):
+        if self.adjustment_type not in (
+            self.AdjustmentType.DEATH,
+            self.AdjustmentType.CRIMINAL,
+        ) and (self.game_id or self.game_name):
             raise ValidationError(
                 {
-                    "game_id": "Only death adjustments can set game information.",
-                    "game_name": "Only death adjustments can set game information.",
+                    "game_id": "Only death and criminal adjustments can set game information.",
+                    "game_name": "Only death and criminal adjustments can set game information.",
                 }
             )
 

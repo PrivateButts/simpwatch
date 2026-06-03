@@ -367,6 +367,149 @@ def _games_by_death_count() -> list[dict]:
     return games
 
 
+def _criminal_game_options() -> list[dict]:
+    event_rows = (
+        SimpEvent.objects.filter(event_type=SimpEvent.EventType.CRIMINAL)
+        .values("game_id", "game_name")
+        .annotate(last_seen=Max("created_at"))
+        .order_by("-last_seen")
+    )
+    if score_adjustment_has_columns("adjustment_type", "game_id", "game_name"):
+        adjustment_rows = (
+            score_adjustments_for_game_type(ScoreAdjustment.AdjustmentType.CRIMINAL)
+            .values("game_id", "game_name")
+            .annotate(last_seen=Max("created_at"))
+            .order_by("-last_seen")
+        )
+    else:
+        adjustment_rows = []
+    seen_game_ids: set[str] = set()
+    has_unknown = False
+    options: list[dict] = []
+
+    for row in chain(event_rows, adjustment_rows):
+        game_id = (row.get("game_id") or "").strip()
+        game_name = (row.get("game_name") or "").strip()
+        if game_id:
+            if game_id in seen_game_ids:
+                continue
+            seen_game_ids.add(game_id)
+            options.append(
+                {
+                    "game_id": game_id,
+                    "game_name": game_name or f"Game {game_id}",
+                }
+            )
+        else:
+            has_unknown = True
+
+    options.sort(key=lambda row: row["game_name"].lower())
+    if has_unknown:
+        options.append({"game_id": "unknown", "game_name": "Unknown"})
+    return options
+
+
+def _crimeboard_rows_alltime(selected_game_id: str = "") -> list[dict]:
+    event_qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.CRIMINAL)
+    adjustment_qs = score_adjustments_for_game_type(
+        ScoreAdjustment.AdjustmentType.CRIMINAL
+    )
+    if selected_game_id == "unknown":
+        event_qs = event_qs.filter(game_id="")
+        adjustment_qs = adjustment_qs.filter(game_id="")
+    elif selected_game_id:
+        event_qs = event_qs.filter(game_id=selected_game_id)
+        adjustment_qs = adjustment_qs.filter(game_id=selected_game_id)
+
+    event_totals = {
+        row["target_person"]: row["crime_count"]
+        for row in event_qs.values("target_person").annotate(crime_count=Sum("points"))
+    }
+    adjustment_totals = {
+        row["target_person"]: row["adjustment_total"]
+        for row in adjustment_qs.values("target_person").annotate(
+            adjustment_total=Sum("points_delta")
+        )
+    }
+    person_ids = sorted(set(event_totals.keys()) | set(adjustment_totals.keys()))
+    people = {person.id: person for person in Person.objects.filter(id__in=person_ids)}
+
+    rows = []
+    for person_id in person_ids:
+        person = people.get(person_id)
+        if not person:
+            continue
+        crime_count = event_totals.get(person_id, 0) + adjustment_totals.get(
+            person_id, 0
+        )
+        if crime_count == 0:
+            continue
+        rows.append(
+            {
+                "person": person,
+                "crime_count": crime_count,
+            }
+        )
+    rows.sort(key=lambda row: (-row["crime_count"], row["person"].id))
+    return rows
+
+
+def _recent_crime_events_alltime(selected_game_id: str = ""):
+    qs = SimpEvent.objects.filter(event_type=SimpEvent.EventType.CRIMINAL)
+    if selected_game_id == "unknown":
+        qs = qs.filter(game_id="")
+    elif selected_game_id:
+        qs = qs.filter(game_id=selected_game_id)
+    return qs.select_related("actor_identity", "target_person").order_by("-created_at")[:25]
+
+
+def _games_by_crime_count() -> list[dict]:
+    """Get games ranked by total crime count."""
+    event_counts = (
+        SimpEvent.objects.filter(event_type=SimpEvent.EventType.CRIMINAL)
+        .values("game_id", "game_name")
+        .annotate(total_crimes=Sum("points"))
+    )
+    if score_adjustment_has_columns("adjustment_type", "game_id", "game_name"):
+        adjustment_counts = (
+            score_adjustments_for_game_type(ScoreAdjustment.AdjustmentType.CRIMINAL)
+            .values("game_id", "game_name")
+            .annotate(total_crimes=Sum("points_delta"))
+        )
+    else:
+        adjustment_counts = []
+
+    totals_by_game_id: dict[str, int] = {}
+    names_by_game_id: dict[str, str] = {}
+    for row in chain(event_counts, adjustment_counts):
+        game_id = (row.get("game_id") or "").strip()
+        game_name = (row.get("game_name") or "").strip()
+        total_crimes = row.get("total_crimes") or 0
+        key = game_id or "unknown"
+        totals_by_game_id[key] = totals_by_game_id.get(key, 0) + total_crimes
+        if key not in names_by_game_id and game_name:
+            names_by_game_id[key] = game_name
+
+    games = []
+    for game_id, total_crimes in totals_by_game_id.items():
+        if total_crimes == 0:
+            continue
+        if game_id == "unknown":
+            game_name = "Unknown"
+        else:
+            game_name = names_by_game_id.get(game_id) or f"Game {game_id}"
+        games.append(
+            {
+                "game_id": game_id,
+                "game_name": game_name,
+                "total_crimes": total_crimes,
+            }
+        )
+    games.sort(key=lambda row: (-row["total_crimes"], row["game_name"].lower()))
+
+    return games
+
+
 def _watched_channels() -> list[str]:
     return list(getattr(settings, "TWITCH_CHANNELS", []))
 
@@ -1196,6 +1339,94 @@ def deathboard_api(request):
     response = JsonResponse(payload)
     duration = max(time.monotonic() - started, 0.0)
     endpoint = "deathboard_api"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(request.method, endpoint, "2xx").inc()
+    return response
+
+
+def crimeboard_page(request):
+    started = time.monotonic()
+    selected_game_id = request.GET.get("game", "").strip()
+    key = _cache_key("crimeboard_page", f"all:{selected_game_id or 'all'}")
+    context = cache.get(key)
+    if context is None:
+        leaderboard_cache_total.labels("crimeboard_page", "miss").inc()
+        channels = _watched_channels_enriched()
+        games = _criminal_game_options()
+        selected_game_name = ""
+        if selected_game_id:
+            for game in games:
+                if game.get("game_id") == selected_game_id:
+                    selected_game_name = game.get("game_name", "")
+                    break
+        context = {
+            "rows": _crimeboard_rows_alltime(selected_game_id),
+            "recent_events": _recent_crime_events_alltime(selected_game_id),
+            "games": games,
+            "selected_game_id": selected_game_id,
+            "selected_game_name": selected_game_name,
+            "most_criminal_games": _games_by_crime_count(),
+            "watched_channels": channels,
+            "twitch_configured": bool(
+                getattr(settings, "TWITCH_BOT_USERNAME", "") or channels
+            ),
+            "twitch_bot_username": getattr(settings, "TWITCH_BOT_USERNAME", ""),
+            "discord_configured": bool(getattr(settings, "DISCORD_BOT_TOKEN", "")),
+        }
+        cache.set(key, context, _cache_ttl())
+    else:
+        leaderboard_cache_total.labels("crimeboard_page", "hit").inc()
+
+    response = render(request, "simpwatch/crimeboard.html", context)
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "crimeboard_page"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(request.method, endpoint, "2xx").inc()
+    return response
+
+
+def crimeboard_api(request):
+    started = time.monotonic()
+    selected_game_id = request.GET.get("game", "").strip()
+    key = _cache_key("crimeboard_api", f"all:{selected_game_id or 'all'}")
+    payload = cache.get(key)
+    if payload is None:
+        leaderboard_cache_total.labels("crimeboard_api", "miss").inc()
+        rows = _crimeboard_rows_alltime(selected_game_id)
+        recent_events = _recent_crime_events_alltime(selected_game_id)
+        payload = {
+            "window": "all",
+            "selected_game_id": selected_game_id,
+            "games": _criminal_game_options(),
+            "crimeboard": [
+                {
+                    "person_id": row["person"].id,
+                    "name": row["person"].name,
+                    "crime_count": row["crime_count"],
+                }
+                for row in rows
+            ],
+            "recent_crimes": [
+                {
+                    "id": event.id,
+                    "actor": event.actor_identity.username,
+                    "target": event.target_person.name,
+                    "game_id": event.game_id,
+                    "game_name": event.game_name,
+                    "reason": event.reason,
+                    "source": event.source,
+                    "created_at": event.created_at.isoformat(),
+                }
+                for event in recent_events
+            ],
+        }
+        cache.set(key, payload, _cache_ttl())
+    else:
+        leaderboard_cache_total.labels("crimeboard_api", "hit").inc()
+
+    response = JsonResponse(payload)
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "crimeboard_api"
     http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
     http_requests_total.labels(request.method, endpoint, "2xx").inc()
     return response

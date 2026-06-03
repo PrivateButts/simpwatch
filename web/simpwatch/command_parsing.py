@@ -128,6 +128,19 @@ def parse_twitch_bamder_reason(content: str) -> str:
     return " ".join(parts[1:]).strip()
 
 
+def parse_twitch_criminal_reason(content: str) -> str:
+    parts = content.strip().split()
+    if len(parts) < 2:
+        return ""
+
+    if parts[1].lower() == "reason":
+        if len(parts) < 3:
+            return ""
+        return " ".join(parts[2:]).strip()
+
+    return " ".join(parts[1:]).strip()
+
+
 def parse_twitch_ban_args(content: str) -> tuple[str, str] | None:
     parts = content.strip().split()
     if len(parts) < 2:

@@ -830,3 +830,174 @@ class BotTokenSetupTests(TestCase):
         self.assertEqual(payload.get("error"), "insufficient_scopes")
         self.assertIn("user:bot", payload.get("missing_scopes", []))
         self.assertFalse(TwitchBotGrant.objects.filter(bot_username="simpbot").exists())
+
+
+class CrimeboardViewTests(TestCase):
+    def setUp(self):
+        self.target_one = Person.objects.create(name="StreamerOne")
+        self.target_two = Person.objects.create(name="StreamerTwo")
+        self.actor_person = Person.objects.create(name="Caller")
+        self.actor_identity = Identity.objects.create(
+            person=self.actor_person,
+            platform=Identity.Platform.TWITCH,
+            platform_user_id="actor-crime-1",
+            username="caller",
+            display_name="caller",
+        )
+
+    def test_crimeboard_api_groups_by_streamer(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="100",
+            game_name="GTA V",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="100",
+            game_name="GTA V",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_two,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="200",
+            game_name="Cyberpunk",
+            source="streamer2",
+            points=1,
+        )
+
+        response = self.client.get("/api/crimeboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["window"], "all")
+        self.assertEqual(payload["crimeboard"][0]["name"], "StreamerOne")
+        self.assertEqual(payload["crimeboard"][0]["crime_count"], 2)
+        self.assertEqual(payload["crimeboard"][1]["name"], "StreamerTwo")
+        self.assertEqual(payload["crimeboard"][1]["crime_count"], 1)
+        self.assertEqual(payload["games"][0]["game_id"], "100")
+
+    def test_crimeboard_api_filters_by_game_id(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="100",
+            game_name="GTA V",
+            source="streamer",
+            points=1,
+        )
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_two,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="200",
+            game_name="Cyberpunk",
+            source="streamer2",
+            points=1,
+        )
+
+        response = self.client.get("/api/crimeboard", {"game": "100"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["selected_game_id"], "100")
+        self.assertEqual(len(payload["crimeboard"]), 1)
+        self.assertEqual(payload["crimeboard"][0]["name"], "StreamerOne")
+
+    def test_crimeboard_api_excludes_non_criminal_events(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.SIMP,
+            source="streamer",
+            points=1,
+        )
+
+        response = self.client.get("/api/crimeboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["crimeboard"], [])
+
+    def test_crimeboard_api_includes_criminal_adjustments(self):
+        ScoreAdjustment.objects.create(
+            target_person=self.target_one,
+            adjustment_type=ScoreAdjustment.AdjustmentType.CRIMINAL,
+            points_delta=2,
+            game_id="100",
+            game_name="GTA V",
+            reason="manual correction",
+        )
+        response = self.client.get("/api/crimeboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["crimeboard"][0]["name"], "StreamerOne")
+        self.assertEqual(payload["crimeboard"][0]["crime_count"], 2)
+        self.assertEqual(payload["games"][0]["game_id"], "100")
+
+    def test_crimeboard_api_sums_multi_point_crime_events(self):
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="100",
+            game_name="GTA V",
+            source="streamer",
+            points=10,
+        )
+        response = self.client.get("/api/crimeboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["crimeboard"][0]["name"], "StreamerOne")
+        self.assertEqual(payload["crimeboard"][0]["crime_count"], 10)
+
+    @override_settings(TWITCH_BOT_USERNAME="testbot")
+    def test_crimeboard_page_renders(self):
+        cache.clear()
+        SimpEvent.objects.create(
+            actor_identity=self.actor_identity,
+            target_person=self.target_one,
+            platform=Identity.Platform.TWITCH,
+            event_type=SimpEvent.EventType.CRIMINAL,
+            game_id="300",
+            game_name="Balatro",
+            source="streamer",
+            points=1,
+        )
+
+        response = self.client.get("/crimeboard")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Crime Board", content)
+        self.assertIn("Balatro", content)
+        self.assertIn("Game Filter", content)
+        self.assertIn("!criminal", content)
+        self.assertIn("!backgroundcheck", content)
+        self.assertNotIn("!death", content)
+        self.assertNotIn("!simp", content)
+        self.assertNotIn("!bamder", content)
+
+    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
+    def test_crimeboard_shows_watched_channels(self):
+        cache.clear()
+        response = self.client.get("/crimeboard")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Watched Channels", content)
+        self.assertIn("https://twitch.tv/streamer1", content)
+        self.assertIn("https://twitch.tv/streamer2", content)

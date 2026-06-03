@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.urls import path
 
 from simpwatch.views import (
+    crimeboard_api,
+    crimeboard_page,
     deathboard_api,
     deathboard_page,
     healthcheck,
@@ -27,6 +29,8 @@ urlpatterns = [
     path("oauth/twitch/bot/callback", twitch_bot_token_callback, name="twitch_bot_token_callback"),
     path("", leaderboard_page, name="leaderboard_page"),
     path("api/leaderboard", leaderboard_api, name="leaderboard_api"),
+    path("crimeboard", crimeboard_page, name="crimeboard_page"),
+    path("api/crimeboard", crimeboard_api, name="crimeboard_api"),
     path("deathboard", deathboard_page, name="deathboard_page"),
     path("api/deathboard", deathboard_api, name="deathboard_api"),
 ]

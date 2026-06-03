@@ -410,6 +410,27 @@ def get_death_count_for_person_in_game(person: Person, game_id: str) -> int:
     )
 
 
+def get_crime_count_for_person_in_game(person: Person, game_id: str) -> int:
+    """Return how many criminal events *person* has for a specific game."""
+    qs = SimpEvent.objects.filter(
+        target_person=person,
+        event_type=SimpEvent.EventType.CRIMINAL,
+    )
+    adjustment_qs = score_adjustments_for_game_type(
+        ScoreAdjustment.AdjustmentType.CRIMINAL
+    ).filter(target_person=person)
+    normalized_game_id = game_id.strip()
+    if normalized_game_id == "unknown":
+        qs = qs.filter(game_id="")
+        adjustment_qs = adjustment_qs.filter(game_id="")
+    elif normalized_game_id:
+        qs = qs.filter(game_id=normalized_game_id)
+        adjustment_qs = adjustment_qs.filter(game_id=normalized_game_id)
+    return (qs.aggregate(total=Sum("points"))["total"] or 0) + (
+        adjustment_qs.aggregate(total=Sum("points_delta"))["total"] or 0
+    )
+
+
 def person_total_score(person: Person, since=None) -> int:
     events = SimpEvent.objects.filter(target_person=person)
     adjustments = score_adjustments_for_type(

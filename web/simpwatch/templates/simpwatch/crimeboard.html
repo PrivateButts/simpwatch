@@ -401,7 +401,7 @@
 <body>
   <main class="wrap">
     <h1>Crime Board</h1>
-    <p class="subtitle">Who's the criminal mastermind?</p>
+    <p class="subtitle italic">🎶 Bad bois bad bois, whatcha gonna do... 🎶</p>
 
     <nav class="top-links" aria-label="Leaderboard navigation">
       <a href="/" class="link-pill">Main Leaderboard</a>
@@ -421,7 +421,7 @@
 
     <section class="grid">
       <article class="panel">
-        <h2>{% if selected_game_name %}{{ selected_game_name }}{% else %}Overall{% endif %}:</h2>
+        <h2>{% if selected_game_name %}{{ selected_game_name }}{% else %}Most Wanted{% endif %}:</h2>
         <ol>
           {% for row in rows %}
           <li>
@@ -435,7 +435,7 @@
       </article>
 
       <article class="panel">
-        <h2>Recent Crimes</h2>
+        <h2>Crime Blotter</h2>
         <div class="event-list">
           {% for event in recent_events %}
           <div class="event">
@@ -452,7 +452,7 @@
       </article>
 
       <article class="panel">
-        <h2>Most Criminal Game</h2>
+        <h2>Most Lawless Game</h2>
         <ol>
           {% for game in most_criminal_games %}
           <li>
@@ -476,12 +476,16 @@
             <table class="cmd-table">
               <tbody>
                 <tr>
-                  <td class="cmd">!criminal</td>
-                  <td>Increment the broadcaster crime counter for their current game — reason required</td>
+                  <td class="cmd">!criminal &lt;reason&gt;</td>
+                  <td>Report the broadcaster for a crime with the given reason (required). Aliases: <code class="cmd">!criminal reason &lt;reason&gt;</code></td>
                 </tr>
                 <tr>
                   <td class="cmd">!backgroundcheck</td>
-                  <td>Show how many times the broadcaster has committed a crime in the current game</td>
+                  <td>Show how many crimes the broadcaster has committed in the current game</td>
+                </tr>
+                <tr>
+                  <td class="cmd">!backgroundcheck @user</td>
+                  <td>Show how many crimes the given user has committed in the broadcaster's current game</td>
                 </tr>
               </tbody>
             </table>

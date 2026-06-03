@@ -1072,11 +1072,12 @@ class TwitchSimpBot(commands.Bot):
                             target_person,
                             event.game_id,
                         )
-                        crime_word = "crime" if crime_count == 1 else "crimes"
+                        game_label = event.game_name or "Unknown"
                         await self._send_message(
                             message,
-                            f"Call the Sheriff! {target_person.name} is wanted for {event.reason}! "
-                            f"This is {crime_count} {crime_word} they have committed!!",
+                            f"Call the Sherriff! {target_person.name} has commited a crime! "
+                            f"They've been locked up {crime_count} amount of times. "
+                            f"WANTED for {event.reason} during {game_label}",
                         )
                     elif event_type == str(SimpEvent.EventType.DEATH):
                         game_label = event.game_name or "Unknown"

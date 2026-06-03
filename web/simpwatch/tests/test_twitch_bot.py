@@ -825,9 +825,10 @@ class ProcessMessageCriminalTests(SimpleTestCase):
 
         msg.channel.send.assert_awaited_once()
         sent: str = msg.channel.send.call_args[0][0]
-        self.assertIn("Call the Sheriff!", sent)
-        self.assertIn("tax evasion", sent)
-        self.assertIn("1 crime they have committed!!", sent)
+        self.assertIn("Call the Sherriff!", sent)
+        self.assertIn("has commited a crime", sent)
+        self.assertIn("locked up 1 amount of times", sent)
+        self.assertIn("WANTED for tax evasion during GTA V", sent)
 
 
 class ProcessMessageCriminalCheckTests(SimpleTestCase):

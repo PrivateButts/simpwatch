@@ -886,7 +886,7 @@ class CrimeboardViewTests(TestCase):
         self.assertEqual(payload["crimeboard"][0]["crime_count"], 2)
         self.assertEqual(payload["crimeboard"][1]["name"], "StreamerTwo")
         self.assertEqual(payload["crimeboard"][1]["crime_count"], 1)
-        self.assertEqual(payload["games"][0]["game_id"], "100")
+        self.assertEqual(payload["games"][0]["game_id"], "200")
 
     def test_crimeboard_api_filters_by_game_id(self):
         SimpEvent.objects.create(

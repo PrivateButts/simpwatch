@@ -707,6 +707,239 @@ class ProcessMessageDeathCheckTests(SimpleTestCase):
         self.assertIn("can't tell what game", sent)
 
 
+class ProcessMessageCriminalTests(SimpleTestCase):
+    """Tests for the !criminal command inside _process_message."""
+
+    def setUp(self) -> None:
+        for key in _stats:
+            _stats[key] = 0
+
+    async def test_criminal_requires_reason(self):
+        bot = _make_bot()
+        msg = _message("!criminal", channel="streamerchan")
+
+        with patch("services.twitch_bot.main.register_simp") as mock_register:
+            await bot._process_message(msg, msg.content)
+
+        mock_register.assert_not_called()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("Usage", sent)
+        self.assertIn("reason is required", sent)
+
+    async def test_criminal_registers_event_against_broadcaster(self):
+        bot = _make_bot()
+        msg = _message("!criminal stole a cookie", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(
+            id=10, points=1, game_id="123", game_name="GTA V",
+        )
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "GTA V"),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        self.assertEqual(_stats["events_registered"], 1)
+
+    async def test_criminal_fetches_game_info(self):
+        bot = _make_bot()
+        msg = _message("!criminal speeding", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(
+            id=11, points=1, game_id="999", game_name="Cyberpunk",
+        )
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("999", "Cyberpunk"),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event) as mock_register,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_register.assert_called_once()
+        _, kwargs = mock_register.call_args
+        self.assertEqual(kwargs["game_id"], "999")
+        self.assertEqual(kwargs["game_name"], "Cyberpunk")
+
+    async def test_criminal_registers_with_event_type_criminal(self):
+        bot = _make_bot()
+        msg = _message("!criminal reason hacking", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(
+            id=12, points=1, game_id="", game_name="",
+        )
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("", ""),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event) as mock_register,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_register.assert_called_once()
+        _, kwargs = mock_register.call_args
+        self.assertEqual(kwargs["event_type"], "criminal")
+        self.assertEqual(kwargs["reason"], "hacking")
+
+    async def test_criminal_in_reply_channel_sends_count(self):
+        bot = _make_bot(reply_channels={"streamerchan"})
+        msg = _message("!criminal tax evasion", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(
+            id=13, points=1, game_id="123", game_name="GTA V", reason="tax evasion",
+        )
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "GTA V"),
+            ),
+            patch("services.twitch_bot.main.get_crime_count_for_person_in_game", return_value=1),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("Call the Sherriff!", sent)
+        self.assertIn("has commited a crime", sent)
+        self.assertIn("locked up 1 amount of times", sent)
+        self.assertIn("WANTED for tax evasion during GTA V", sent)
+
+
+class ProcessMessageCriminalCheckTests(SimpleTestCase):
+    """Tests for the !backgroundcheck command inside _process_message."""
+
+    def setUp(self) -> None:
+        for key in _stats:
+            _stats[key] = 0
+
+    async def test_backgroundcheck_reports_count_for_current_game(self):
+        bot = _make_bot()
+        msg = _message("!backgroundcheck", channel="streamerchan")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=SimpleNamespace(name="streamerchan"),
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "GTA V"),
+            ),
+            patch(
+                "services.twitch_bot.main.get_crime_count_for_person_in_game",
+                return_value=3,
+            ) as mock_count,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_count.assert_called_once()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("STREAMERCHAN has committed 3 crimes while playing GTA V", sent)
+        self.assertEqual(_stats["commands_seen"], 1)
+
+    async def test_backgroundcheck_with_user_arg_reports_for_that_user(self):
+        bot = _make_bot()
+        msg = _message("!backgroundcheck @someuser", channel="streamerchan")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=SimpleNamespace(name="someuser"),
+            ) as mock_target,
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "GTA V"),
+            ),
+            patch(
+                "services.twitch_bot.main.get_crime_count_for_person_in_game",
+                return_value=5,
+            ) as mock_count,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_target.assert_called_once_with("someuser")
+        mock_count.assert_called_once()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("SOMEUSER has committed 5 crimes while playing GTA V", sent)
+
+    async def test_backgroundcheck_with_user_arg_handles_unknown_game(self):
+        bot = _make_bot()
+        msg = _message("!backgroundcheck @someuser", channel="streamerchan")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=SimpleNamespace(name="someuser"),
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("", ""),
+            ),
+            patch(
+                "services.twitch_bot.main.get_crime_count_for_person_in_game"
+            ) as mock_count,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_count.assert_not_called()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("can't tell what game", sent)
+
+    async def test_backgroundcheck_handles_unknown_current_game(self):
+        bot = _make_bot()
+        msg = _message("!backgroundcheck", channel="streamerchan")
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=SimpleNamespace(name="streamerchan"),
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("", ""),
+            ),
+            patch(
+                "services.twitch_bot.main.get_crime_count_for_person_in_game"
+            ) as mock_count,
+        ):
+            await bot._process_message(msg, msg.content)
+
+        mock_count.assert_not_called()
+        msg.channel.send.assert_awaited_once()
+        sent: str = msg.channel.send.call_args[0][0]
+        self.assertIn("can't tell what game", sent)
+
+
 class BotCommandTests(SimpleTestCase):
     """Tests for @bot mention commands routed through _handle_bot_command."""
 
@@ -954,6 +1187,37 @@ class ReplyAuthorizationTests(SimpleTestCase):
         after = _counter_value(
             "simpwatch_twitch_commands_total",
             labels={"command": "death"},
+        )
+        self.assertEqual(after - before, 1.0)
+
+    async def test_criminal_command_increments_command_metric(self):
+        bot = _make_bot()
+        msg = _message("!criminal stole a cookie", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(
+            id=3, points=1, game_id="123", game_name="GTA V",
+        )
+        before = _counter_value(
+            "simpwatch_twitch_commands_total",
+            labels={"command": "criminal"},
+        )
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch(
+                "services.twitch_bot.main._fetch_twitch_channel_game",
+                return_value=("123", "GTA V"),
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        after = _counter_value(
+            "simpwatch_twitch_commands_total",
+            labels={"command": "criminal"},
         )
         self.assertEqual(after - before, 1.0)
 

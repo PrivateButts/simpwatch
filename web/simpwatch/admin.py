@@ -102,7 +102,10 @@ class ScoreAdjustmentAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if not obj.created_by_id:
             obj.created_by = request.user
-        if obj.adjustment_type != ScoreAdjustment.AdjustmentType.DEATH:
+        if obj.adjustment_type not in (
+            ScoreAdjustment.AdjustmentType.DEATH,
+            ScoreAdjustment.AdjustmentType.CRIMINAL,
+        ):
             obj.game_id = ""
             obj.game_name = ""
         super().save_model(request, obj, form, change)

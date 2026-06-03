@@ -6,6 +6,7 @@ from simpwatch.command_parsing import (
     parse_bot_mention_command,
     parse_twitch_ban_args,
     parse_twitch_bamder_reason,
+    parse_twitch_criminal_reason,
     parse_twitch_reason,
     parse_twitch_target,
 )
@@ -105,6 +106,24 @@ class TwitchCommandParsingTests(SimpleTestCase):
 
     def test_parse_ban_args_rejects_missing_mention(self):
         self.assertIsNone(parse_twitch_ban_args("!ban SomeUser"))
+
+    def test_parse_criminal_reason_empty_when_no_text(self):
+        self.assertEqual(parse_twitch_criminal_reason("!criminal"), "")
+
+    def test_parse_criminal_reason_with_text(self):
+        self.assertEqual(
+            parse_twitch_criminal_reason("!criminal stole a cookie"),
+            "stole a cookie",
+        )
+
+    def test_parse_criminal_reason_with_reason_keyword(self):
+        self.assertEqual(
+            parse_twitch_criminal_reason("!criminal reason stole a cookie"),
+            "stole a cookie",
+        )
+
+    def test_parse_criminal_reason_with_reason_keyword_only(self):
+        self.assertEqual(parse_twitch_criminal_reason("!criminal reason"), "")
 
 
 class BotMentionCommandParsingTests(SimpleTestCase):

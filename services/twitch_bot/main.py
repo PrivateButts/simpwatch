@@ -904,6 +904,22 @@ class TwitchSimpBot(commands.Bot):
             )
 
     async def _process_message(self, message, content: str) -> None:
+        source_broadcaster = getattr(message, "source_broadcaster", None)
+        if source_broadcaster is not None:
+            broadcaster = getattr(message, "broadcaster", None)
+            if (
+                broadcaster is not None
+                and hasattr(broadcaster, "id")
+                and hasattr(source_broadcaster, "id")
+                and source_broadcaster.id != broadcaster.id
+            ):
+                logger.debug(
+                    "Skipping shared chat relay broadcaster=%s source_broadcaster=%s",
+                    broadcaster.name,
+                    source_broadcaster.name,
+                )
+                return
+
         bot_cmd = parse_bot_mention_command(content, self.nick or self._bot_username or "")
         if bot_cmd is not None:
             _stats["commands_seen"] += 1

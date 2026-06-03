@@ -10,3 +10,4 @@ scratch.ipynb
 # Real secret file - use secret.example.yaml as template
 secrets/secret.yaml
 *.log
+.coverage

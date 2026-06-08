@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 
 def parse_bot_mention_command(
     content: str, bot_username: str
@@ -165,3 +167,81 @@ def parse_twitch_ban_args(content: str) -> tuple[str, str] | None:
         return target_username, ""
 
     return target_username, " ".join(parts[3:]).strip()
+
+
+# ---------------------------------------------------------------------------
+# Happy Pride easter egg
+# ---------------------------------------------------------------------------
+
+PRIDE_EMOTE_NAMES: tuple[str, ...] = (
+    "PANSEXUALPRIDE",
+    "LESBIANPRIDE",
+    "GENDERFLUIDPRIDE",
+    "BISEXUALPRIDE",
+    "TRANSGENDERPRIDE",
+    "NONBINARYPRIDE",
+    "INTERSEXPRIDE",
+    "GAYPRIDE",
+    "ASEXUALPRIDE",
+)
+
+_COMMON_TWITCH_EMOTES_LOWER: frozenset[str] = frozenset({
+    "kappa",
+    "pogchamp",
+    "lul",
+    "biblethump",
+    "keepo",
+    "4head",
+    "smorc",
+    "kreygasm",
+    "dansgame",
+    "notlikethis",
+    "swiftrage",
+    "trihard",
+    "failfish",
+    "cmonbruh",
+    "minglee",
+    "pepehands",
+    "feelsgoodman",
+    "feelsbadman",
+    "feelsamazingman",
+    "pepega",
+    "weirdchamp",
+    "ez",
+    "clap",
+    "pog",
+    "pogu",
+    "w",
+    "kkona",
+    "monkas",
+    "monkaw",
+    "monkahmm",
+    "omegalul",
+    "sadge",
+})
+
+_K_EMOTE = _COMMON_TWITCH_EMOTES_LOWER | {e.lower() for e in PRIDE_EMOTE_NAMES}
+
+
+def is_happy_pride_easter_egg(
+    text: str,
+    message_emotes: list | None = None,
+) -> bool:
+    """Return True when *text* is ``Happy Pride`` with only emote tokens.
+    
+    *message_emotes* is an optional sequence of twitchio ``ChatEmote`` objects
+    whose ``.name`` will also be treated as recognised emote names.
+    """
+    tokens = text.strip().split()
+    if len(tokens) < 2:
+        return False
+
+    known_emotes = set(_K_EMOTE)
+    if message_emotes:
+        for emote in message_emotes:
+            name = getattr(emote, "name", None)
+            if name:
+                known_emotes.add(name.lower())
+
+    non_emote = [t.lower() for t in tokens if t.lower() not in known_emotes]
+    return non_emote == ["happy", "pride"]

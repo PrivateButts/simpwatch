@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import sys
 import time
 import urllib.error
@@ -85,6 +86,8 @@ _twitch_channel_game_cache: dict[str, dict[str, str | float]] = {}
 from simpwatch.models import Identity, SimpEvent, TwitchBotGrant, TwitchBroadcasterGrant  # noqa: E402
 
 from simpwatch.command_parsing import (  # noqa: E402
+    PRIDE_EMOTE_NAMES,
+    is_happy_pride_easter_egg,
     parse_bot_ban_args,
     parse_bot_simp_args,
     parse_bot_mention_command,
@@ -919,6 +922,12 @@ class TwitchSimpBot(commands.Bot):
                     source_broadcaster.name,
                 )
                 return
+
+        if is_happy_pride_easter_egg(content, getattr(message, "emotes", None)):
+            emote1 = random.choice(PRIDE_EMOTE_NAMES)
+            emote2 = random.choice(PRIDE_EMOTE_NAMES)
+            await self._send_message(message, f"{emote1} HAPPY PRIDE {emote2}")
+            return
 
         bot_cmd = parse_bot_mention_command(content, self.nick or self._bot_username or "")
         if bot_cmd is not None:

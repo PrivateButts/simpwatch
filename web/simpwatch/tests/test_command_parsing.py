@@ -1,6 +1,8 @@
 from django.test import SimpleTestCase
 
 from simpwatch.command_parsing import (
+    PRIDE_EMOTE_NAMES,
+    is_happy_pride_easter_egg,
     parse_bot_ban_args,
     parse_bot_simp_args,
     parse_bot_mention_command,
@@ -217,3 +219,53 @@ class BotMentionSimpArgParsingTests(SimpleTestCase):
             parse_bot_simp_args(["@riikarii", "because"]),
             ("riikarii", ""),
         )
+
+
+class HappyPrideEasterEggTests(SimpleTestCase):
+    def test_exact_happy_pride(self):
+        self.assertTrue(is_happy_pride_easter_egg("Happy Pride"))
+
+    def test_lowercase_happy_pride(self):
+        self.assertTrue(is_happy_pride_easter_egg("happy pride"))
+
+    def test_uppercase_happy_pride(self):
+        self.assertTrue(is_happy_pride_easter_egg("HAPPY PRIDE"))
+
+    def test_with_twitch_emote_suffix(self):
+        self.assertTrue(is_happy_pride_easter_egg("Happy Pride Kappa"))
+
+    def test_with_pride_emote_prefix(self):
+        self.assertTrue(is_happy_pride_easter_egg("PANSEXUALPRIDE Happy Pride"))
+
+    def test_with_multiple_pride_emotes(self):
+        self.assertTrue(
+            is_happy_pride_easter_egg("Happy Pride LESBIANPRIDE PANSEXUALPRIDE")
+        )
+
+    def test_with_random_message_returns_false(self):
+        self.assertFalse(is_happy_pride_easter_egg("Happy Pride everyone"))
+
+    def test_extra_words_prefix_returns_false(self):
+        self.assertFalse(is_happy_pride_easter_egg("Hello Happy Pride"))
+
+    def test_extra_words_middle_returns_false(self):
+        self.assertFalse(is_happy_pride_easter_egg("Happy Birthday Pride"))
+
+    def test_empty_string_returns_false(self):
+        self.assertFalse(is_happy_pride_easter_egg(""))
+
+    def test_single_word_returns_false(self):
+        self.assertFalse(is_happy_pride_easter_egg("Happy"))
+
+    def test_unrelated_command_returns_false(self):
+        self.assertFalse(is_happy_pride_easter_egg("!simp"))
+
+    def test_with_unknown_emote_returns_false(self):
+        self.assertFalse(is_happy_pride_easter_egg("Happy Pride SomeRandomEmote"))
+
+    def test_case_mixed_with_emotes(self):
+        self.assertTrue(is_happy_pride_easter_egg("happy PRIDE Kappa"))
+
+    def test_emote_names_are_exported(self):
+        self.assertIn("PANSEXUALPRIDE", PRIDE_EMOTE_NAMES)
+        self.assertEqual(len(PRIDE_EMOTE_NAMES), 9)

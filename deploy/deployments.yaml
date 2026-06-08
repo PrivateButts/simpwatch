@@ -95,7 +95,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/privatebutts/simpwatch-web:sha-9182226
+          image: ghcr.io/privatebutts/simpwatch-web:sha-a40bf09
           imagePullPolicy: Always
           workingDir: /app/web
           command:
@@ -221,7 +221,7 @@ spec:
     spec:
       containers:
         - name: bot
-          image: ghcr.io/privatebutts/simpwatch-bot-twitch:sha-9182226
+          image: ghcr.io/privatebutts/simpwatch-bot-twitch:sha-a40bf09
           imagePullPolicy: Always
           command:
             - python
@@ -341,7 +341,7 @@ spec:
     spec:
       containers:
         - name: bot
-          image: ghcr.io/privatebutts/simpwatch-bot-discord:sha-9182226
+          image: ghcr.io/privatebutts/simpwatch-bot-discord:sha-a40bf09
           imagePullPolicy: Always
           command:
             - python

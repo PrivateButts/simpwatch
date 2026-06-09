@@ -267,5 +267,5 @@ class HappyPrideEasterEggTests(SimpleTestCase):
         self.assertTrue(is_happy_pride_easter_egg("happy PRIDE Kappa"))
 
     def test_emote_names_are_exported(self):
-        self.assertIn("PANSEXUALPRIDE", PRIDE_EMOTE_NAMES)
+        self.assertIn("PansexualPride", PRIDE_EMOTE_NAMES)
         self.assertEqual(len(PRIDE_EMOTE_NAMES), 9)

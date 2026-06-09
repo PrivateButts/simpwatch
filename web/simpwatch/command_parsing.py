@@ -174,15 +174,15 @@ def parse_twitch_ban_args(content: str) -> tuple[str, str] | None:
 # ---------------------------------------------------------------------------
 
 PRIDE_EMOTE_NAMES: tuple[str, ...] = (
-    "PANSEXUALPRIDE",
-    "LESBIANPRIDE",
-    "GENDERFLUIDPRIDE",
-    "BISEXUALPRIDE",
-    "TRANSGENDERPRIDE",
-    "NONBINARYPRIDE",
-    "INTERSEXPRIDE",
-    "GAYPRIDE",
-    "ASEXUALPRIDE",
+    "PansexualPride",
+    "LesbianPride",
+    "GenderFluidPride",
+    "BisexualPride",
+    "TransgenderPride",
+    "NonbinaryPride",
+    "IntersexPride",
+    "GayPride",
+    "AsexualPride",
 )
 
 _COMMON_TWITCH_EMOTES_LOWER: frozenset[str] = frozenset({

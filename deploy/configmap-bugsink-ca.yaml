@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bugsink-ca
+  namespace: simpwatch
+data:
+  bugsink-ca.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIICzTCCAbWgAwIBAgITdErMxKvIA8ijql95171L27y+ETANBgkqhkiG9w0BAQsF
+    ADAAMB4XDTI2MDYyMDA4MDIyMloXDTI2MDkxODA4MDIyMlowADCCASIwDQYJKoZI
+    hvcNAQEBBQADggEPADCCAQoCggEBAMFH09Z9mF9WOFcriHIf9PnsFN6cPIIcDSHd
+    qNFPUC1TYWBJkW0pX1Gkg6Rz7LkazhWwi6BHjma7zCXzDGQkm/2D39qdyXZA6EQp
+    X1aahQRFbY7eAHuAbOrFYP8I5k23aVeZgib9k4gYF5vGl7lwsP5jjX9HdIlDtTgc
+    xecCuprTwMiQ0Sf1LKxJ+I1+lG+pEiGExCDkl3Sh5eJMO6sC5swqi8ABBgSKi5Jd
+    UDAEgs2c8PTf0iMAYK8u9nM4IMrPqIi/HtFoPg+gqJ++MiRViefjgbFk0YLOrtkM
+    X888mnsxDRu1I2t0LcsAxpBamEhy+hTFzJ0SEn9Dizjdvnk5paECAwEAAaNAMD4w
+    DgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHgYDVR0RAQH/BBQwEoIQYnVn
+    c2luay5ob21lLmxhYjANBgkqhkiG9w0BAQsFAAOCAQEAZNaG2o0qvMPPVb8I8qpQ
+    ZnRqQnBT2rr27auHMuTgLgSGkblkkxb2Sl9RfR4vUBifIaIBaMBp0wnr0oioo8yS
+    vc/mgXoUvH8Fz/hfUM+myn7RqUJ2Ev2lB6fBBOtwJbPXPOVbUCwHtR6+HM5it/Lq
+    8c8wEv/E5AtLvvYPI/l3lTmo4QjcVsG8w0eKVqTWrFkl003nx26fZ45G0slGKbRh
+    ofETIG24V9e/fbIYvVD0yx6U+vIOyzO2YMtnyeCF1arWGO2dS7i0pTgKvzgFO7SL
+    JJ31Wt+C/ISOWusPZg/vOskUUIkvm28YM5l3kr9bCFV+EplUOyt43vB8OttZjYRa
+    kw==
+    -----END CERTIFICATE-----

@@ -117,6 +117,8 @@ spec:
                 secretKeyRef:
                   key: BUGSINK_DSN
                   name: simpwatch-env
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/bugsink-ca.pem
             - name: DJANGO_ALLOWED_HOSTS
               value: "simpwatch.k3s.local"
             - name: DJANGO_CSRF_TRUSTED_ORIGINS
@@ -201,6 +203,11 @@ spec:
                 secretKeyRef:
                   key: TWITCH_REPLY_CHANNELS
                   name: simpwatch-env
+          volumeMounts:
+            - name: bugsink-ca
+              mountPath: /etc/ssl/certs/bugsink-ca.pem
+              subPath: bugsink-ca.pem
+              readOnly: true
           resources:
             requests:
               cpu: 500m
@@ -208,6 +215,10 @@ spec:
             limits:
               cpu: 1
               memory: 1Gi
+      volumes:
+        - name: bugsink-ca
+          configMap:
+            name: bugsink-ca
 ---
 apiVersion: apps/v1
 kind: Deployment

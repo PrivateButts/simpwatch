@@ -24,6 +24,21 @@ USE_X_FORWARDED_HOST = (
     os.getenv("DJANGO_USE_X_FORWARDED_HOST", "False").lower() == "true"
 )
 
+BUGSINK_DSN = os.getenv("BUGSINK_DSN", "").strip()
+if BUGSINK_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=BUGSINK_DSN,
+        integrations=[DjangoIntegration()],
+        send_default_pii=True,
+        max_request_body_size="always",
+        traces_sample_rate=0,
+        send_client_reports=False,
+        auto_session_tracking=False,
+    )
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

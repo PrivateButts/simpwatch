@@ -28,3 +28,4 @@ data:
   TWITCH_METRICS_PORT: {{ .Values.twitchBot.metrics.port | quote }}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
+  BUGSINK_DSN: {{ .Values.env.BUGSINK_DSN | quote }}

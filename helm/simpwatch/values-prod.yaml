@@ -91,6 +91,7 @@ env:
   TWITCH_TOKEN_REDIRECT_URI: "https://simpwatch.example.com/oauth/twitch/callback"
   TWITCH_ONBOARD_STATE_TTL_SECONDS: "600"
   TWITCH_BROADCASTER_TOKEN_SCOPES: "channel:bot"
+  BUGSINK_DSN: ""
 
 prometheus:
   scrape:

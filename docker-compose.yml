@@ -30,6 +30,7 @@ services:
       DJANGO_USE_X_FORWARDED_HOST: ${DJANGO_USE_X_FORWARDED_HOST:-False}
       CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
       LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
+      BUGSINK_DSN: ${BUGSINK_DSN:-}
     command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000"
     working_dir: /app/web
     ports:
@@ -50,6 +51,7 @@ services:
     environment:
       CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
       LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
+      BUGSINK_DSN: ${BUGSINK_DSN:-}
     command: python -m services.twitch_bot.main
     healthcheck:
       test: ["CMD", "python", "-m", "services.twitch_bot.healthcheck"]
@@ -73,6 +75,7 @@ services:
     environment:
       CACHE_URL: ${CACHE_URL:-redis://redis:6379/1}
       LEADERBOARD_CACHE_TTL_SECONDS: ${LEADERBOARD_CACHE_TTL_SECONDS:-15}
+      BUGSINK_DSN: ${BUGSINK_DSN:-}
     command: python -m services.discord_bot.main
     depends_on:
       db:

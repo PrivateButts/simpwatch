@@ -112,6 +112,11 @@ spec:
                   name: simpwatch-env
             - name: DJANGO_DEBUG
               value: "False"
+            - name: BUGSINK_DSN
+              valueFrom:
+                secretKeyRef:
+                  key: BUGSINK_DSN
+                  name: simpwatch-env
             - name: DJANGO_ALLOWED_HOSTS
               value: "simpwatch.k3s.local"
             - name: DJANGO_CSRF_TRUSTED_ORIGINS

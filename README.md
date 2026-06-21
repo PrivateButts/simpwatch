@@ -413,6 +413,7 @@ export DISCORD_GUILD_ID='your-guild-id'
 export WEB_IMAGE='ghcr.io/<owner>/simpwatch-web:latest'
 export BOT_TWITCH_IMAGE='ghcr.io/<owner>/simpwatch-bot-twitch:latest'
 export BOT_DISCORD_IMAGE='ghcr.io/<owner>/simpwatch-bot-discord:latest'
+export BUGSINK_DSN='example-dsn'
 ```
 
 ### 2) Deploy stack

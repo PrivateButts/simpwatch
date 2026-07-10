@@ -13,6 +13,7 @@ from simpwatch.models import (
     SimpEvent,
     TwitchBotGrant,
     TwitchBroadcasterGrant,
+    TwitchChannel,
 )
 
 
@@ -242,8 +243,9 @@ class DeathboardViewTests(TestCase):
         self.assertNotIn("!simp", content)
         self.assertNotIn("!bamder", content)
 
-    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_deathboard_shows_watched_channels(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
+        TwitchChannel.objects.create(login="streamer2", is_monitored=True)
         cache.clear()
         response = self.client.get("/deathboard")
         self.assertEqual(response.status_code, 200)
@@ -392,11 +394,11 @@ class DeathboardViewTests(TestCase):
 
 class HelpSectionViewTests(TestCase):
     @override_settings(
-        TWITCH_CHANNELS=["streamer1"],
         TWITCH_BOT_USERNAME="simpbot",
         DISCORD_BOT_TOKEN="discord-token",
     )
     def test_help_section_rendered_on_page(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
         cache.clear()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
@@ -407,11 +409,11 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("Watched Channels", content)
 
     @override_settings(
-        TWITCH_CHANNELS=["streamer1"],
         TWITCH_BOT_USERNAME="simpbot",
         DISCORD_BOT_TOKEN="discord-token",
     )
     def test_commands_listed_on_page(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
         cache.clear()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
@@ -430,10 +432,10 @@ class HelpSectionViewTests(TestCase):
         self.assertNotIn("<td class=\"cmd\">!died</td>", content)
 
     @override_settings(
-        TWITCH_CHANNELS=["streamer1"],
         TWITCH_BOT_USERNAME="simpbot",
     )
     def test_banthem_panels_rendered_on_page(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
         cache.clear()
         SimpEvent.objects.create(
             actor_identity=Identity.objects.create(
@@ -460,8 +462,9 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("prvbutts", content)
         self.assertIn("wants <strong>prvbutts</strong> to be banned for acted up.", content)
 
-    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_watched_channels_shown_when_configured(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
+        TwitchChannel.objects.create(login="streamer2", is_monitored=True)
         cache.clear()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
@@ -469,16 +472,18 @@ class HelpSectionViewTests(TestCase):
         self.assertIn("https://twitch.tv/streamer1", content)
         self.assertIn("https://twitch.tv/streamer2", content)
 
-    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_no_grant_badge_shown_when_channel_lacks_grant(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
+        TwitchChannel.objects.create(login="streamer2", is_monitored=True)
         cache.clear()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn("Lurk Only", content)
 
-    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_no_grant_badge_hidden_when_channel_has_active_grant(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
+        TwitchChannel.objects.create(login="streamer2", is_monitored=True)
         cache.clear()
         TwitchBroadcasterGrant.objects.create(
             username="streamer1",
@@ -499,8 +504,9 @@ class HelpSectionViewTests(TestCase):
         content = response.content.decode()
         self.assertNotIn("Lurk Only", content)
 
-    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_no_grant_badge_shown_when_grant_is_inactive(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
+        TwitchChannel.objects.create(login="streamer2", is_monitored=True)
         cache.clear()
         TwitchBroadcasterGrant.objects.create(
             username="streamer1",
@@ -522,7 +528,7 @@ class HelpSectionViewTests(TestCase):
         # streamer1 has an inactive grant so badge should still appear
         self.assertIn("Lurk Only", content)
 
-    @override_settings(TWITCH_CHANNELS=[], TWITCH_BOT_USERNAME="", DISCORD_BOT_TOKEN="")
+    @override_settings(TWITCH_BOT_USERNAME="", DISCORD_BOT_TOKEN="")
     def test_no_channels_shows_fallback_message(self):
         cache.clear()
         response = self.client.get("/")
@@ -559,7 +565,6 @@ class TwitchOnboardingViewTests(TestCase):
         cache.clear()
 
     @override_settings(
-        TWITCH_CHANNELS=["prvbutts"],
         TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
     )
     @patch("simpwatch.views._validate_twitch_access_token")
@@ -569,6 +574,7 @@ class TwitchOnboardingViewTests(TestCase):
         mock_exchange,
         mock_validate,
     ):
+        TwitchChannel.objects.create(login="prvbutts", is_monitored=True)
         state = "state-ok"
         cache.set("twitch:onboard:state:state-ok", "1", 600)
         mock_exchange.return_value = {
@@ -595,7 +601,6 @@ class TwitchOnboardingViewTests(TestCase):
         self.assertEqual(grant.broadcaster_user_id, "42490016")
 
     @override_settings(
-        TWITCH_CHANNELS=["prvbutts"],
         TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
     )
     @patch("simpwatch.views._validate_twitch_access_token")
@@ -605,6 +610,7 @@ class TwitchOnboardingViewTests(TestCase):
         mock_exchange,
         mock_validate,
     ):
+        TwitchChannel.objects.create(login="prvbutts", is_monitored=True)
         state = "state-reject"
         cache.set("twitch:onboard:state:state-reject", "1", 600)
         mock_exchange.return_value = {
@@ -629,7 +635,6 @@ class TwitchOnboardingViewTests(TestCase):
         self.assertEqual(TwitchBroadcasterGrant.objects.count(), 0)
 
     @override_settings(
-        TWITCH_CHANNELS=["prvbutts"],
         TWITCH_ONBOARD_STATE_TTL_SECONDS=600,
     )
     @patch("simpwatch.views._validate_twitch_access_token")
@@ -639,6 +644,7 @@ class TwitchOnboardingViewTests(TestCase):
         mock_exchange,
         mock_validate,
     ):
+        TwitchChannel.objects.create(login="prvbutts", is_monitored=True)
         state = "state-case"
         cache.set("twitch:onboard:state:state-case", "1", 600)
         mock_exchange.return_value = {
@@ -992,8 +998,9 @@ class CrimeboardViewTests(TestCase):
         self.assertNotIn("!simp", content)
         self.assertNotIn("!bamder", content)
 
-    @override_settings(TWITCH_CHANNELS=["streamer1", "streamer2"])
     def test_crimeboard_shows_watched_channels(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
+        TwitchChannel.objects.create(login="streamer2", is_monitored=True)
         cache.clear()
         response = self.client.get("/crimeboard")
         self.assertEqual(response.status_code, 200)

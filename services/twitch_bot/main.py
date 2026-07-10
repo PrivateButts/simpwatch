@@ -57,16 +57,9 @@ _WATCHDOG_MAX_RECONNECT_ATTEMPTS = int(
 )
 _METRICS_ENABLED = os.getenv("TWITCH_METRICS_ENABLED", "true").lower() == "true"
 _METRICS_PORT = int(os.getenv("TWITCH_METRICS_PORT", "9090"))
-_TWITCH_CHANNEL_LOGINS = [
-    c.strip().lower()
-    for c in os.getenv("TWITCH_CHANNELS", "").split(",")
-    if c.strip()
-]
-_TWITCH_REPLY_CHANNELS = {
-    c.strip().lower()
-    for c in os.getenv("TWITCH_REPLY_CHANNELS", "").split(",")
-    if c.strip()
-}
+_CHANNEL_RELOAD_INTERVAL_SECONDS = int(
+    os.getenv("TWITCH_CHANNEL_RELOAD_SECONDS", "60")
+)
 _REPLY_GRANT_CACHE_SECONDS = int(os.getenv("TWITCH_REPLY_GRANT_CACHE_SECONDS", "30"))
 _TWITCH_APP_TOKEN_CACHE_TTL_SECONDS = int(
     os.getenv("TWITCH_APP_TOKEN_CACHE_TTL_SECONDS", "3000")
@@ -119,6 +112,10 @@ from simpwatch.scoring import (  # noqa: E402
     get_score_and_rank_for_person,
     normalize_username,
     register_simp,
+)
+from simpwatch.twitch_channels import (  # noqa: E402
+    get_monitored_channels,
+    get_reply_channels,
 )
 
 
@@ -465,14 +462,15 @@ class TwitchSimpBot(commands.Bot):
         self._db_grant_loaded: bool = False
 
         self._client_secret = os.getenv("TWITCH_CLIENT_SECRET", "").strip() or None
-        self._channel_logins = list(_TWITCH_CHANNEL_LOGINS)
+        self._channel_logins: list[str] = list(get_monitored_channels())
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._watchdog_task: asyncio.Task[None] | None = None
         self._stats_task: asyncio.Task[None] | None = None
+        self._channel_reload_task: asyncio.Task[None] | None = None
         self._last_message_at: float = time.monotonic()
         self._last_irc_at: float = time.monotonic()
         self._watchdog_reconnect_attempts: int = 0
-        self._reply_channels: set[str] = set(_TWITCH_REPLY_CHANNELS)
+        self._reply_channels: set[str] = get_reply_channels()
         self._reply_grant_cache: dict[str, tuple[float, bool]] = {}
         super().__init__(
             client_id=os.getenv("TWITCH_CLIENT_ID", "").strip(),
@@ -790,9 +788,17 @@ class TwitchSimpBot(commands.Bot):
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         self._watchdog_task = asyncio.create_task(self._watchdog_loop())
         self._stats_task = asyncio.create_task(self._stats_loop())
+        self._channel_reload_task = asyncio.create_task(
+            self._channel_reload_loop()
+        )
 
     def _stop_background_tasks(self) -> None:
-        for attr in ("_heartbeat_task", "_watchdog_task", "_stats_task"):
+        for attr in (
+            "_heartbeat_task",
+            "_watchdog_task",
+            "_stats_task",
+            "_channel_reload_task",
+        ):
             task: asyncio.Task | None = getattr(self, attr, None)
             if task is not None:
                 task.cancel()
@@ -804,6 +810,38 @@ class TwitchSimpBot(commands.Bot):
             while True:
                 mark_healthy()
                 await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            raise
+
+    async def _channel_reload_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(_CHANNEL_RELOAD_INTERVAL_SECONDS)
+                if _CHANNEL_RELOAD_INTERVAL_SECONDS <= 0:
+                    continue
+                try:
+                    new_channels = await asyncio.to_thread(get_monitored_channels)
+                    new_reply = await asyncio.to_thread(get_reply_channels)
+                except Exception:
+                    logger.warning(
+                        "Failed to reload channel config from DB; will retry"
+                    )
+                    continue
+
+                if set(new_channels) != set(self._channel_logins) or new_reply != self._reply_channels:
+                    logger.info(
+                        "Channel config changed. monitored=%s reply=%s",
+                        new_channels,
+                        sorted(new_reply),
+                    )
+                    self._channel_logins = list(new_channels)
+                    self._reply_channels = new_reply
+                    self._stop_background_tasks()
+                    try:
+                        await asyncio.wait_for(self.close(), timeout=5)
+                    except Exception:
+                        pass
+                    return
         except asyncio.CancelledError:
             raise
 
@@ -1109,7 +1147,7 @@ class TwitchSimpBot(commands.Bot):
                         await self._send_message(
                             message,
                             f"Call the Sherriff! {target_person.name} has commited a crime! "
-                            f"They've been locked up {crime_count} amount of times. "
+                            f"They've been locked up {crime_count} times. "
                             f"WANTED for {event.reason} during {game_label}",
                         )
                     elif event_type == str(SimpEvent.EventType.DEATH):
@@ -1353,7 +1391,6 @@ if __name__ == "__main__":
     required_env = {
         "TWITCH_CLIENT_ID": os.getenv("TWITCH_CLIENT_ID", "").strip(),
         "TWITCH_CLIENT_SECRET": os.getenv("TWITCH_CLIENT_SECRET", "").strip(),
-        "TWITCH_CHANNELS": os.getenv("TWITCH_CHANNELS", "").strip(),
     }
 
     db_grant = _get_bot_grant_from_db()

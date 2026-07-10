@@ -9,6 +9,7 @@ from .models import (
     SimpEvent,
     TwitchBotGrant,
     TwitchBroadcasterGrant,
+    TwitchChannel,
 )
 from .scoring import bump_leaderboard_cache_version, merge_people
 
@@ -198,3 +199,17 @@ class TwitchBotGrantAdmin(admin.ModelAdmin):
             "Bot token will be refreshed on next startup. Check bot logs for refresh status.",
             level=messages.INFO,
         )
+
+
+@admin.register(TwitchChannel)
+class TwitchChannelAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "login",
+        "is_monitored",
+        "send_replies",
+        "updated_at",
+    )
+    list_filter = ("is_monitored", "send_replies")
+    search_fields = ("login",)
+    list_editable = ("is_monitored", "send_replies")

@@ -24,7 +24,6 @@ def main() -> int:
         "TWITCH_BOT_ID": os.getenv("TWITCH_BOT_ID", "").strip(),
         "TWITCH_BOT_ACCESS_TOKEN": os.getenv("TWITCH_BOT_ACCESS_TOKEN", "").strip(),
         "TWITCH_BOT_REFRESH_TOKEN": os.getenv("TWITCH_BOT_REFRESH_TOKEN", "").strip(),
-        "TWITCH_CHANNELS": os.getenv("TWITCH_CHANNELS", "").strip(),
     }
     missing = [name for name, value in required.items() if not value]
     if missing:

@@ -511,7 +511,9 @@ def _games_by_crime_count() -> list[dict]:
 
 
 def _watched_channels() -> list[str]:
-    return list(getattr(settings, "TWITCH_CHANNELS", []))
+    from .twitch_channels import get_monitored_channels
+
+    return get_monitored_channels()
 
 
 def _normalized_watched_channels() -> set[str]:
@@ -747,7 +749,9 @@ def _fetch_twitch_channel_data(channels: list[str]) -> dict[str, dict]:
 
 def _watched_channels_enriched() -> list[dict]:
     """Return channel list, enriched with Twitch API data when credentials are set."""
-    channels = list(getattr(settings, "TWITCH_CHANNELS", []))
+    from .twitch_channels import get_monitored_channels
+
+    channels = get_monitored_channels()
     if not channels:
         return []
 
@@ -907,7 +911,7 @@ def twitch_onboard_callback(request):
             {
                 "ok": False,
                 "error": "channel_not_configured",
-                "detail": "Broadcaster login is not listed in TWITCH_CHANNELS.",
+                "detail": "Broadcaster login is not configured as a monitored Twitch channel.",
                 "login": login,
             },
             status=403,

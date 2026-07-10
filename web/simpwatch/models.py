@@ -191,3 +191,29 @@ class TwitchBotGrant(models.Model):
     def __str__(self) -> str:
         status = "active" if self.is_active else "inactive"
         return f"twitch-bot:{self.bot_username} ({status})"
+
+
+class TwitchChannel(models.Model):
+    login = models.CharField(max_length=255, unique=True)
+    is_monitored = models.BooleanField(default=True)
+    send_replies = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["is_monitored", "send_replies"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.login = self.login.strip().lower()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        bits = []
+        if not self.is_monitored:
+            bits.append("unmonitored")
+        if self.send_replies:
+            bits.append("replies")
+        status = ", ".join(bits) if bits else "monitored"
+        return f"twitch:{self.login} ({status})"

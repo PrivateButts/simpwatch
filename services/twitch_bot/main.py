@@ -26,6 +26,16 @@ setup_django()
 
 logger = logging.getLogger("twitch_bot")
 
+
+def _flush_errors_and_exit(exit_code: int = 1) -> None:
+    try:
+        import sentry_sdk
+        sentry_sdk.flush(timeout=5.0)
+    except Exception:
+        pass
+    os._exit(exit_code)
+
+
 # --- In-process telemetry counters (reset every stats interval) ---
 _stats: dict[str, int] = {
     "messages_seen": 0,
@@ -157,7 +167,7 @@ async def _db_call(coro_func, *args, **kwargs):
                 _DB_MAX_CONSECUTIVE_FAILURES,
             )
             clear_heartbeat()
-            os._exit(1)
+            _flush_errors_and_exit()
 
     for attempt in range(_DB_OPERATION_RETRIES + 1):
         try:
@@ -476,7 +486,8 @@ class TwitchSimpBot(commands.Bot):
         self._db_grant_loaded: bool = False
 
         self._client_secret = os.getenv("TWITCH_CLIENT_SECRET", "").strip() or None
-        self._channel_logins: list[str] = list(get_monitored_channels())
+        self._channel_logins: list[str] = []
+        self._channel_loaded: bool = False
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._watchdog_task: asyncio.Task[None] | None = None
         self._stats_task: asyncio.Task[None] | None = None
@@ -484,7 +495,7 @@ class TwitchSimpBot(commands.Bot):
         self._last_message_at: float = time.monotonic()
         self._last_irc_at: float = time.monotonic()
         self._watchdog_reconnect_attempts: int = 0
-        self._reply_channels: set[str] = get_reply_channels()
+        self._reply_channels: set[str] = set()
         self._reply_grant_cache: dict[str, tuple[float, bool]] = {}
         super().__init__(
             client_id=os.getenv("TWITCH_CLIENT_ID", "").strip(),
@@ -585,6 +596,16 @@ class TwitchSimpBot(commands.Bot):
                 raise
 
         await self.add_token(self._bot_access_token, self._bot_refresh_token)
+
+        # Load channel config from DB. We do this late (in setup_hook) rather than
+        # __init__ to give the DB time to be ready and to use asyncio.to_thread.
+        try:
+            self._channel_logins = await asyncio.to_thread(get_monitored_channels)
+            self._reply_channels = await asyncio.to_thread(get_reply_channels)
+            self._channel_loaded = True
+        except Exception:
+            logger.exception("Failed to load channels from database")
+
         await self._subscribe_to_channels()
 
     async def event_ready(self):
@@ -919,7 +940,7 @@ class TwitchSimpBot(commands.Bot):
                             self._watchdog_reconnect_attempts,
                         )
                         clear_heartbeat()
-                        os._exit(1)
+                        _flush_errors_and_exit()
 
                     # Don't disable the watchdog after one failed reconnect attempt.
                     self._last_irc_at = time.monotonic()
@@ -1481,6 +1502,6 @@ if __name__ == "__main__":
                     crash_count,
                     _CRASH_COOLDOWN_SECONDS,
                 )
-                os._exit(1)
+                _flush_errors_and_exit()
 
             time.sleep(5)

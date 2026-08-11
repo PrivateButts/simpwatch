@@ -7,7 +7,7 @@ namespace: simpwatch-prod
 web:
   replicaCount: 2
   image:
-    tag: "v1.0.0"  # Pin to specific version tag
+    tag: "v1.0.0" # Pin to specific version tag
 
 twitchBot:
   replicaCount: 1
@@ -22,13 +22,14 @@ twitchBot:
       port: 9090
 
 discordBot:
-  replicaCount: 1
+  enabled: false
+  replicaCount: 0
   image:
     tag: "v1.0.0"
 
 postgres:
   storage:
-    storageClassName: csi-hostpath-sc  # Override for production SSD/NFS
+    storageClassName: csi-hostpath-sc # Override for production SSD/NFS
     size: 100Gi
   image:
     tag: "16-alpine"
@@ -42,7 +43,7 @@ postgres:
 
 redis:
   storage:
-    storageClassName: csi-hostpath-sc  # Override for production
+    storageClassName: csi-hostpath-sc # Override for production
     size: 10Gi
   resources:
     requests:
@@ -64,7 +65,7 @@ ingress:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
-    - host: simpwatch.example.com  # Change to your production domain
+    - host: simpwatch.example.com # Change to your production domain
       paths:
         - path: /
           pathType: Prefix
@@ -76,7 +77,7 @@ ingress:
 # Production environment variables
 env:
   DJANGO_DEBUG: "False"
-  DJANGO_ALLOWED_HOSTS: "simpwatch.example.com"  # Update to production domain
+  DJANGO_ALLOWED_HOSTS: "simpwatch.example.com" # Update to production domain
   DJANGO_TRUST_X_FORWARDED_PROTO: "True"
   DJANGO_USE_X_FORWARDED_HOST: "True"
   CACHE_URL: "redis://redis:6379/1"

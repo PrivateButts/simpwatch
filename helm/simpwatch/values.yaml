@@ -18,7 +18,7 @@ web:
   replicaCount: 1
   image:
     repository: privatebutts/simpwatch-web
-    tag: latest  # Override with specific image tag (e.g., "latest", "v1.0.0")
+    tag: latest # Override with specific image tag (e.g., "latest", "v1.0.0")
   service:
     type: ClusterIP
     port: 8000
@@ -71,8 +71,8 @@ twitchBot:
 
 # Discord bot worker
 discordBot:
-  enabled: true
-  replicaCount: 1
+  enabled: false
+  replicaCount: 0
   image:
     repository: privatebutts/simpwatch-bot-discord
     tag: latest
@@ -103,7 +103,7 @@ postgres:
       memory: 1Gi
   storage:
     enabled: true
-    storageClassName: local-path  # K3s default; override for production storage
+    storageClassName: local-path # K3s default; override for production storage
     size: 20Gi
   # Database credentials are stored in Rancher UI Secret: simpwatch-secrets
   # Keys: postgres-user, postgres-password, postgres-db
@@ -130,7 +130,7 @@ redis:
       memory: 256Mi
   storage:
     enabled: true
-    storageClassName: local-path  # K3s default; override for production
+    storageClassName: local-path # K3s default; override for production
     size: 2Gi
 
 # Ingress configuration (Traefik for K3s)
@@ -143,7 +143,7 @@ ingress:
     # cert-manager.io/cluster-issuer: "letsencrypt-prod"
     # traefik.ingress.kubernetes.io/router.entrypoints: websecure
   hosts:
-    - host: simpwatch.local  # Override with your domain (e.g., simpwatch.example.com)
+    - host: simpwatch.local # Override with your domain (e.g., simpwatch.example.com)
       paths:
         - path: /
           pathType: Prefix
@@ -157,9 +157,9 @@ ingress:
 # ConfigMap environment variables (non-sensitive)
 env:
   DJANGO_DEBUG: "False"
-  DJANGO_ALLOWED_HOSTS: "simpwatch.local"  # Update to match ingress host
-  DJANGO_TRUST_X_FORWARDED_PROTO: "False"  # Set True if behind reverse proxy
-  DJANGO_USE_X_FORWARDED_HOST: "False"     # Set True if behind reverse proxy
+  DJANGO_ALLOWED_HOSTS: "simpwatch.local" # Update to match ingress host
+  DJANGO_TRUST_X_FORWARDED_PROTO: "False" # Set True if behind reverse proxy
+  DJANGO_USE_X_FORWARDED_HOST: "False" # Set True if behind reverse proxy
   CACHE_URL: "redis://redis:6379/1"
   LEADERBOARD_CACHE_TTL_SECONDS: "15"
   SIMP_DEFAULT_POINTS: "1"

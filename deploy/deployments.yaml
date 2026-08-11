@@ -326,7 +326,7 @@ metadata:
   name: simpwatch-bot-discord
   namespace: simpwatch
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: simpwatch-bot-discord

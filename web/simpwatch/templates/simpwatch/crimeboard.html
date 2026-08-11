@@ -151,6 +151,8 @@
         counter-reset: row-number;
       display: grid;
       gap: 8px;
+      max-height: 450px;
+      overflow-y: auto;
     }
 
     ol li {
@@ -173,10 +175,18 @@
       gap: 10px;
     }
 
+    li > span:first-of-type {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .count {
       color: var(--accent);
       font-weight: 700;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .event-list {
@@ -189,6 +199,7 @@
       background: var(--event-bg);
       border-radius: 10px;
       padding: 10px;
+      overflow-wrap: anywhere;
     }
 
     .event .meta {
@@ -201,6 +212,8 @@
       color: var(--muted);
       font-size: 0.92rem;
       margin-top: 4px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .help-section {

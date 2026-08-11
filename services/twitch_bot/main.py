@@ -925,6 +925,14 @@ class TwitchSimpBot(commands.Bot):
         _stats["messages_seen"] += 1
         content = (getattr(message, "text", None) or getattr(message, "content", "") or "").strip()
 
+        reply = getattr(message, "reply", None)
+        if reply is not None:
+            parent_user = getattr(reply, "parent_user", None)
+            if parent_user is not None:
+                parent_mention = getattr(parent_user, "mention", "")
+                if parent_mention:
+                    content = content.removeprefix(f"{parent_mention} ").strip()
+
         logger.debug(
             "message channel=%s author=%s content=%r",
             self._message_channel_name(message),

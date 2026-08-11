@@ -11,3 +11,4 @@ scratch.ipynb
 secrets/secret.yaml
 *.log
 .coverage
+examples/

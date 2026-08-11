@@ -178,6 +178,44 @@ class EventMessageRoutingTests(SimpleTestCase):
         self.assertEqual(_stats["messages_seen"], 1)
         self.assertEqual(_stats["errors"], 1)
 
+    async def test_reply_mention_stripped_before_processing(self):
+        """Reply @parentUser prefix is stripped before _process_message receives content."""
+        bot = _make_bot()
+        reply_user = SimpleNamespace(mention="@targetuser")
+        reply = SimpleNamespace(parent_user=reply_user)
+        msg = _message(
+            "@targetuser Happy Pride", channel="streamerchan"
+        )
+        msg.text = "@targetuser Happy Pride"
+        msg.reply = reply
+
+        with patch.object(
+            bot, "_process_message", AsyncMock()
+        ) as mock_process:
+            await bot.event_message(msg)
+
+        mock_process.assert_awaited_once()
+        stripped_content = mock_process.call_args[0][1]
+        self.assertEqual(stripped_content, "Happy Pride")
+
+    async def test_happy_pride_easter_egg_fires_on_reply_message(self):
+        """Easter egg triggers on reply messages after @parentUser prefix is stripped."""
+        bot = _make_bot(reply_channels={"streamerchan"})
+        reply_user = SimpleNamespace(mention="@targetuser")
+        reply = SimpleNamespace(parent_user=reply_user)
+        msg = _message(
+            "@targetuser Happy Pride", channel="streamerchan"
+        )
+        msg.text = "@targetuser Happy Pride"
+        msg.reply = reply
+
+        await bot.event_message(msg)
+
+        msg.channel.send.assert_awaited_once()
+        sent_text = msg.channel.send.call_args[0][0]
+        self.assertIn("HAPPY PRIDE", sent_text)
+        self.assertEqual(_stats["commands_seen"], 0)
+
 
 class ProcessMessageSimpTests(SimpleTestCase):
     """Tests for the !simp path inside _process_message."""

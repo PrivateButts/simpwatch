@@ -126,6 +126,8 @@
     ol {
       margin: 0;
       padding-left: 22px;
+      max-height: 450px;
+      overflow-y: auto;
     }
 
     li {
@@ -140,9 +142,17 @@
       border-bottom: none;
     }
 
+    li > span:first-of-type {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .points {
       color: var(--accent);
       font-weight: 700;
+      flex-shrink: 0;
     }
 
     .event-list {
@@ -158,6 +168,7 @@
       padding: 10px;
       font-size: 0.92rem;
       background: var(--event-bg);
+      overflow-wrap: anywhere;
     }
 
     .reason {
@@ -165,6 +176,8 @@
       color: var(--muted);
       font-size: 0.86rem;
       font-style: italic;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .meta {

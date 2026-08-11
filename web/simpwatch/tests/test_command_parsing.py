@@ -269,3 +269,7 @@ class HappyPrideEasterEggTests(SimpleTestCase):
     def test_emote_names_are_exported(self):
         self.assertIn("PansexualPride", PRIDE_EMOTE_NAMES)
         self.assertEqual(len(PRIDE_EMOTE_NAMES), 9)
+
+    def test_reply_prefix_returns_false(self):
+        """Reply @mention prefix is NOT stripped by this function (bot handles it)."""
+        self.assertFalse(is_happy_pride_easter_egg("@someone Happy Pride"))

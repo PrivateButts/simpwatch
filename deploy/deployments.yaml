@@ -193,16 +193,6 @@ spec:
                 secretKeyRef:
                   key: TWITCH_BOT_REFRESH_TOKEN
                   name: simpwatch-env
-            - name: TWITCH_CHANNELS
-              valueFrom:
-                secretKeyRef:
-                  key: TWITCH_CHANNELS
-                  name: simpwatch-env
-            - name: TWITCH_REPLY_CHANNELS
-              valueFrom:
-                secretKeyRef:
-                  key: TWITCH_REPLY_CHANNELS
-                  name: simpwatch-env
           volumeMounts:
             - name: bugsink-ca
               mountPath: /etc/ssl/certs/bugsink-ca.pem
@@ -311,16 +301,6 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: TWITCH_GRANT_ENCRYPTION_KEY
-                  name: simpwatch-env
-            - name: TWITCH_CHANNELS
-              valueFrom:
-                secretKeyRef:
-                  key: TWITCH_CHANNELS
-                  name: simpwatch-env
-            - name: TWITCH_REPLY_CHANNELS
-              valueFrom:
-                secretKeyRef:
-                  key: TWITCH_REPLY_CHANNELS
                   name: simpwatch-env
             - name: DISCORD_BOT_TOKEN
               valueFrom:
@@ -431,11 +411,6 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: TWITCH_BOT_REFRESH_TOKEN
-                  name: simpwatch-env
-            - name: TWITCH_CHANNELS
-              valueFrom:
-                secretKeyRef:
-                  key: TWITCH_CHANNELS
                   name: simpwatch-env
           resources:
             requests:

@@ -54,9 +54,10 @@ def _make_bot(
         "TWITCH_BOT_ID": "test-bot-id",
         "TWITCH_BOT_ACCESS_TOKEN": "test-access-token",
         "TWITCH_BOT_REFRESH_TOKEN": "test-refresh-token",
-        "TWITCH_CHANNELS": "streamerchan",
     }
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=False), \
+         patch("simpwatch.twitch_channels.get_monitored_channels", return_value=["streamerchan"]), \
+         patch("simpwatch.twitch_channels.get_reply_channels", return_value=set()):
         bot = TwitchSimpBot()
     bot.nick = nick
     if reply_channels is not None:
@@ -98,9 +99,10 @@ class BotInitAsyncSafeTests(SimpleTestCase):
             "TWITCH_BOT_ID": "test-bot-id",
             "TWITCH_BOT_ACCESS_TOKEN": "test-access-token",
             "TWITCH_BOT_REFRESH_TOKEN": "test-refresh-token",
-            "TWITCH_CHANNELS": "streamerchan",
         }
-        with patch.dict(os.environ, env, clear=False):
+        with patch.dict(os.environ, env, clear=False), \
+             patch("simpwatch.twitch_channels.get_monitored_channels", return_value=["streamerchan"]), \
+             patch("simpwatch.twitch_channels.get_reply_channels", return_value=set()):
             # If __init__ still calls ORM code this will raise SynchronousOnlyOperation
             bot = TwitchSimpBot()
         self.assertEqual(bot._bot_username, "simpbot")
@@ -115,10 +117,11 @@ class BotInitAsyncSafeTests(SimpleTestCase):
             "TWITCH_BOT_ID": "",
             "TWITCH_BOT_ACCESS_TOKEN": "",
             "TWITCH_BOT_REFRESH_TOKEN": "",
-            "TWITCH_CHANNELS": "streamerchan",
         }
         db_grant = ("simpbot", "bot-user-99", "acc-tok", "ref-tok")
-        with patch.dict(os.environ, env, clear=False):
+        with patch.dict(os.environ, env, clear=False), \
+             patch("simpwatch.twitch_channels.get_monitored_channels", return_value=["streamerchan"]), \
+             patch("simpwatch.twitch_channels.get_reply_channels", return_value=set()):
             bot = TwitchSimpBot()
 
         with patch("services.twitch_bot.main._get_bot_grant_from_db", return_value=db_grant), \

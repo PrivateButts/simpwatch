@@ -8,6 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from django.core.cache import cache as django_cache
 from django.db import close_old_connections
 from django.db.utils import InterfaceError, OperationalError
 from twitchio.exceptions import HTTPException
@@ -67,6 +68,19 @@ _TWITCH_APP_TOKEN_CACHE_TTL_SECONDS = int(
 _TWITCH_CHANNEL_GAME_CACHE_TTL_SECONDS = int(
     os.getenv("TWITCH_CHANNEL_GAME_CACHE_TTL_SECONDS", "45")
 )
+# Crash counter: if the main loop crashes more than this many times within
+# the cooldown window, escalate to os._exit(1) so the container process dies
+# and Docker/K8s restarts it fresh instead of retrying a broken state forever.
+_CRASH_COOLDOWN_SECONDS = int(
+    os.getenv("TWITCH_CRASH_COOLDOWN_SECONDS", "60"),
+)
+_CRASH_LIMIT = int(os.getenv("TWITCH_CRASH_LIMIT", "5"))
+# Timeout (seconds) for database calls in async threads to prevent hangs.
+_DB_CALL_TIMEOUT_SECONDS = int(
+    os.getenv("TWITCH_DB_CALL_TIMEOUT_SECONDS", "30"),
+)
+_crash_times: list[float] = []
+
 _twitch_app_token_cache: dict[str, str | float] = {
     "token": "",
     "expires_at": 0.0,
@@ -584,7 +598,7 @@ class TwitchSimpBot(commands.Bot):
     async def _subscribe_to_channels(self) -> None:
         if not self._channel_logins:
             raise RuntimeError(
-                "TWITCH_CHANNELS must list at least one Twitch channel to monitor."
+                "No monitored Twitch channels configured in the database. Add channels via Django admin (simpwatch > Twitch channels)."
             )
 
         users = await self.fetch_users(logins=self._channel_logins)
@@ -809,6 +823,14 @@ class TwitchSimpBot(commands.Bot):
         try:
             while True:
                 mark_healthy()
+                try:
+                    django_cache.set(
+                        "twitch:bot:heartbeat",
+                        str(int(time.time())),
+                        timeout=120,
+                    )
+                except Exception:
+                    pass
                 await asyncio.sleep(30)
         except asyncio.CancelledError:
             raise
@@ -820,8 +842,20 @@ class TwitchSimpBot(commands.Bot):
                 if _CHANNEL_RELOAD_INTERVAL_SECONDS <= 0:
                     continue
                 try:
-                    new_channels = await asyncio.to_thread(get_monitored_channels)
-                    new_reply = await asyncio.to_thread(get_reply_channels)
+                    new_channels = await asyncio.wait_for(
+                        asyncio.to_thread(get_monitored_channels),
+                        timeout=_DB_CALL_TIMEOUT_SECONDS,
+                    )
+                    new_reply = await asyncio.wait_for(
+                        asyncio.to_thread(get_reply_channels),
+                        timeout=_DB_CALL_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Timed out reloading channel config from DB after %ds; will retry",
+                        _DB_CALL_TIMEOUT_SECONDS,
+                    )
+                    continue
                 except Exception:
                     logger.warning(
                         "Failed to reload channel config from DB; will retry"
@@ -1434,4 +1468,19 @@ if __name__ == "__main__":
         except Exception as exc:
             clear_heartbeat()
             logger.exception("Twitch bot crashed: %s", exc)
+
+            now = time.monotonic()
+            _crash_times.append(now)
+            window_start = now - _CRASH_COOLDOWN_SECONDS
+            _crash_times[:] = [t for t in _crash_times if t > window_start]
+            crash_count = len(_crash_times)
+            if crash_count >= _CRASH_LIMIT:
+                logger.error(
+                    "Crash limit reached (%d crashes in %ds), forcing process exit "
+                    "so the container/Pod restarts fresh.",
+                    crash_count,
+                    _CRASH_COOLDOWN_SECONDS,
+                )
+                os._exit(1)
+
             time.sleep(5)

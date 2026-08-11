@@ -57,7 +57,6 @@ cp .env.example .env
 - `TWITCH_BOT_ID`
 - `TWITCH_BOT_ACCESS_TOKEN`
 - `TWITCH_BOT_REFRESH_TOKEN`
-- `TWITCH_CHANNELS` (comma-separated channel names)
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_GUILD_ID` (optional; if set, slash command syncs to one guild)
 
@@ -241,7 +240,6 @@ If you prefer to manage tokens via env vars (not recommended for production), yo
    - `TWITCH_BOT_ID=<bot account user id>`
    - `TWITCH_BOT_ACCESS_TOKEN=<access token>`
    - `TWITCH_BOT_REFRESH_TOKEN=<refresh token>`
-   - `TWITCH_CHANNELS=channel_one,channel_two`
 5. Restart the bot worker
 
 The bot will fall back to env vars if no database grant is found. Like the database approach, tokens are automatically refreshed on expiration.
@@ -255,8 +253,8 @@ authorize your app with `channel:bot` so EventSub replies can be sent.
   - `TWITCH_TOKEN_REDIRECT_URI=https://<your-domain>/oauth/twitch/callback`
   - `TWITCH_BROADCASTER_TOKEN_SCOPES=channel:bot`
   - `TWITCH_GRANT_ENCRYPTION_KEY=<long-random-value>`
-2. Ensure the channel login is listed in `TWITCH_CHANNELS`.
-  - Tokens are only persisted for logins in `TWITCH_CHANNELS` (case-insensitive).
+2. Ensure the channel login is added via Django admin (`simpwatch > Twitch channels`).
+  - Only logins configured as monitored Twitch channels can store grants.
 3. Send broadcaster to:
   - `https://<your-domain>/oauth/twitch/start`
 4. Broadcaster completes Twitch consent.
@@ -405,7 +403,6 @@ export TWITCH_CLIENT_SECRET='your-client-secret'
 export TWITCH_BOT_ID='your-bot-user-id'
 export TWITCH_BOT_ACCESS_TOKEN='your-access-token'
 export TWITCH_BOT_REFRESH_TOKEN='your-refresh-token'
-export TWITCH_CHANNELS='channel_one,channel_two'
 
 export DISCORD_BOT_TOKEN='your-discord-token'
 export DISCORD_GUILD_ID='your-guild-id'

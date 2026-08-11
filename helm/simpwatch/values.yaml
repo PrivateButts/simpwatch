@@ -189,8 +189,6 @@ env:
 #   - twitch-bot-id (TWITCH_BOT_ID)
 #   - twitch-bot-access-token (TWITCH_BOT_ACCESS_TOKEN)
 #   - twitch-bot-refresh-token (TWITCH_BOT_REFRESH_TOKEN)
-#   - twitch-channels (TWITCH_CHANNELS)
-#   - twitch-reply-channels (TWITCH_REPLY_CHANNELS)
 #   - twitch-grant-encryption-key (TWITCH_GRANT_ENCRYPTION_KEY)
 #   - discord-bot-token (DISCORD_BOT_TOKEN)
 #   - discord-guild-id (DISCORD_GUILD_ID)

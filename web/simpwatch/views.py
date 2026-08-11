@@ -803,6 +803,41 @@ def healthcheck(request):
     return response
 
 
+_BOT_HEARTBEAT_TTL_SECONDS = 120
+_BOT_HEARTBEAT_MAX_AGE_SECONDS = 90
+
+
+def bot_health(request):
+    started = time.monotonic()
+    raw = cache.get("twitch:bot:heartbeat")
+    if raw is not None:
+        try:
+            last_seen = int(str(raw))
+            age = int(time.time()) - last_seen
+            if 0 <= age <= _BOT_HEARTBEAT_MAX_AGE_SECONDS:
+                status, http_code = "ok", 200
+            else:
+                status, http_code = "degraded", 200
+        except (ValueError, TypeError):
+            status, http_code = "degraded", 200
+    else:
+        status, http_code = "degraded", 503
+
+    response = JsonResponse(
+        {
+            "status": status,
+            "bot_alive": status == "ok",
+        }
+    )
+    duration = max(time.monotonic() - started, 0.0)
+    endpoint = "bot_health"
+    http_request_duration_seconds.labels(request.method, endpoint).observe(duration)
+    http_requests_total.labels(
+        request.method, endpoint, "2xx" if http_code < 400 else f"{http_code // 100}xx"
+    ).inc()
+    return response
+
+
 def metrics_view(request):
     payload, content_type = prometheus_payload()
     return HttpResponse(payload, content_type=content_type)

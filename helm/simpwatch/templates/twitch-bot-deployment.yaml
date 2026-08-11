@@ -92,16 +92,6 @@ spec:
             secretKeyRef:
               name: {{ .Values.secretName }}
               key: twitch-bot-refresh-token
-        - name: TWITCH_CHANNELS
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.secretName }}
-              key: twitch-channels
-        - name: TWITCH_REPLY_CHANNELS
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.secretName }}
-              key: twitch-reply-channels
         resources:
           {{- toYaml .Values.twitchBot.resources | nindent 12 }}
         {{- if .Values.twitchBot.healthcheck.enabled }}

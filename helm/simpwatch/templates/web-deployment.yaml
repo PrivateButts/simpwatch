@@ -75,11 +75,6 @@ spec:
             secretKeyRef:
               name: {{ .Values.secretName }}
               key: twitch-bot-username
-        - name: TWITCH_CHANNELS
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.secretName }}
-              key: twitch-channels
         - name: TWITCH_OAUTH_TOKEN
           valueFrom:
             secretKeyRef:

@@ -24,7 +24,7 @@ spec:
     namespace: simpwatch
     image:
       registry: ghcr.io
-      pullPolicy: IfNotPresent
+      pullPolicy: Always
     web:
       image:
         repository: privatebutts/simpwatch-web

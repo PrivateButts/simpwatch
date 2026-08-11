@@ -10,7 +10,7 @@ namespace: simpwatch
 # Image configuration
 image:
   registry: ghcr.io
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 # Web service (Django application)
 web:

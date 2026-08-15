@@ -72,6 +72,11 @@ _CHANNEL_RELOAD_INTERVAL_SECONDS = int(
     os.getenv("TWITCH_CHANNEL_RELOAD_SECONDS", "60")
 )
 _REPLY_GRANT_CACHE_SECONDS = int(os.getenv("TWITCH_REPLY_GRANT_CACHE_SECONDS", "30"))
+# Negative results (no grant yet) are cached for a much shorter window so a
+# newly-added broadcaster grant is recognized promptly without a restart.
+_REPLY_GRANT_NEGATIVE_CACHE_SECONDS = int(
+    os.getenv("TWITCH_REPLY_GRANT_NEGATIVE_CACHE_SECONDS", "5")
+)
 _TWITCH_APP_TOKEN_CACHE_TTL_SECONDS = int(
     os.getenv("TWITCH_APP_TOKEN_CACHE_TTL_SECONDS", "3000")
 )
@@ -708,7 +713,12 @@ class TwitchSimpBot(commands.Bot):
         cached = self._reply_grant_cache.get(channel_name)
         if cached is not None:
             ts, allowed = cached
-            if now - ts <= _REPLY_GRANT_CACHE_SECONDS:
+            ttl = (
+                _REPLY_GRANT_CACHE_SECONDS
+                if allowed
+                else _REPLY_GRANT_NEGATIVE_CACHE_SECONDS
+            )
+            if now - ts <= ttl:
                 return allowed
 
         allowed = await _db_call(_has_active_broadcaster_grant, channel_name)
@@ -882,6 +892,11 @@ class TwitchSimpBot(commands.Bot):
                         "Failed to reload channel config from DB; will retry"
                     )
                     continue
+
+                # Always clear the reply-grant cache on each reload cycle so a
+                # newly-authorized broadcaster grant is picked up without a
+                # restart. The grant check re-queries the DB on the next message.
+                self._reply_grant_cache.clear()
 
                 if set(new_channels) != set(self._channel_logins) or new_reply != self._reply_channels:
                     logger.info(

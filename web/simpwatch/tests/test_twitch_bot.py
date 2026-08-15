@@ -1177,6 +1177,39 @@ class ReplyAuthorizationTests(SimpleTestCase):
 
         msg.respond.assert_awaited_once()
 
+    async def test_grant_cache_negative_result_expires_quickly(self):
+        bot = _make_bot()
+        db_mock = AsyncMock(return_value=False)
+
+        with patch.object(twitch_main.time, "monotonic", return_value=100.0), \
+             patch.object(twitch_main, "_db_call", new=db_mock):
+            self.assertFalse(await bot._is_reply_authorized_for_channel("streamerchan"))
+            self.assertEqual(db_mock.call_count, 1)
+
+        with patch.object(twitch_main.time, "monotonic", return_value=103.0), \
+             patch.object(twitch_main, "_db_call", new=db_mock):
+            self.assertFalse(await bot._is_reply_authorized_for_channel("streamerchan"))
+            self.assertEqual(db_mock.call_count, 1)
+
+        with patch.object(twitch_main.time, "monotonic", return_value=110.0), \
+             patch.object(twitch_main, "_db_call", new=db_mock):
+            self.assertFalse(await bot._is_reply_authorized_for_channel("streamerchan"))
+            self.assertEqual(db_mock.call_count, 2)
+
+    async def test_grant_cache_positive_result_cached_longer(self):
+        bot = _make_bot()
+        db_mock = AsyncMock(return_value=True)
+
+        with patch.object(twitch_main.time, "monotonic", return_value=100.0), \
+             patch.object(twitch_main, "_db_call", new=db_mock):
+            self.assertTrue(await bot._is_reply_authorized_for_channel("streamerchan"))
+            self.assertEqual(db_mock.call_count, 1)
+
+        with patch.object(twitch_main.time, "monotonic", return_value=120.0), \
+             patch.object(twitch_main, "_db_call", new=db_mock):
+            self.assertTrue(await bot._is_reply_authorized_for_channel("streamerchan"))
+            self.assertEqual(db_mock.call_count, 1)
+
     async def test_simp_command_increments_command_metric(self):
         bot = _make_bot()
         msg = _message("!simp", channel="streamerchan")

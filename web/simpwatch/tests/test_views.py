@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 
 from django.core.cache import cache
@@ -471,6 +472,99 @@ class HelpSectionViewTests(TestCase):
         content = response.content.decode()
         self.assertIn("https://twitch.tv/streamer1", content)
         self.assertIn("https://twitch.tv/streamer2", content)
+
+    @patch("simpwatch.views._fetch_twitch_channel_data")
+    def test_watched_channels_list_live_channels_first(self, mock_fetch):
+        TwitchChannel.objects.create(login="quietlylive", is_monitored=True)
+        TwitchChannel.objects.create(login="busylive", is_monitored=True)
+        TwitchChannel.objects.create(login="offline1", is_monitored=True)
+        TwitchChannel.objects.create(login="offline2", is_monitored=True)
+        cache.clear()
+        mock_fetch.return_value = {
+            "quietlylive": {
+                "login": "quietlylive",
+                "display_name": "QuietlyLive",
+                "profile_image_url": "",
+                "is_live": True,
+                "viewer_count": 3,
+                "stream_title": "",
+                "game_name": "",
+                "has_data": True,
+            },
+            "busylive": {
+                "login": "busylive",
+                "display_name": "BusyLive",
+                "profile_image_url": "",
+                "is_live": True,
+                "viewer_count": 99,
+                "stream_title": "",
+                "game_name": "",
+                "has_data": True,
+            },
+            "offline2": {
+                "login": "offline2",
+                "display_name": "Offline2",
+                "profile_image_url": "",
+                "is_live": False,
+                "viewer_count": 0,
+                "stream_title": "",
+                "game_name": "",
+                "has_data": True,
+            },
+            "offline1": {
+                "login": "offline1",
+                "display_name": "Offline1",
+                "profile_image_url": "",
+                "is_live": False,
+                "viewer_count": 0,
+                "stream_title": "",
+                "game_name": "",
+                "has_data": True,
+            },
+        }
+
+        content = self.client.get("/").content.decode()
+
+        logins = re.findall(r"https://twitch\.tv/(\w+)\"", content)
+        self.assertEqual(logins[:4], ["busylive", "quietlylive", "offline1", "offline2"])
+
+    def test_watched_channels_sorted_from_cached_payload(self):
+        TwitchChannel.objects.create(login="streamer1", is_monitored=True)
+        TwitchChannel.objects.create(login="streamer2", is_monitored=True)
+        cache.clear()
+        cache.set(
+            "twitch_channel_data",
+            [
+                {
+                    "login": "streamer1",
+                    "display_name": "Streamer1",
+                    "profile_image_url": "",
+                    "is_live": False,
+                    "viewer_count": 0,
+                    "stream_title": "",
+                    "game_name": "",
+                    "has_data": True,
+                    "has_grant": True,
+                },
+                {
+                    "login": "streamer2",
+                    "display_name": "Streamer2",
+                    "profile_image_url": "",
+                    "is_live": True,
+                    "viewer_count": 5,
+                    "stream_title": "",
+                    "game_name": "",
+                    "has_data": True,
+                    "has_grant": True,
+                },
+            ],
+            60,
+        )
+
+        content = self.client.get("/").content.decode()
+
+        logins = re.findall(r"https://twitch\.tv/(\w+)\"", content)
+        self.assertEqual(logins[:2], ["streamer2", "streamer1"])
 
     def test_no_grant_badge_shown_when_channel_lacks_grant(self):
         TwitchChannel.objects.create(login="streamer1", is_monitored=True)

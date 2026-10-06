@@ -31,6 +31,9 @@ Examples:
 - Django admin for identity linking and score moderation
 - Django admin bulk merge action for combining duplicate people records
 - Configurable cooldown lever (default disabled)
+- Death board and crime board pages with a searchable game filter combobox
+- Panel bodies (leaderboards, activity feeds, watched channels) are height-capped and
+  scroll internally; long titles ellipsize instead of stretching their column
 
 ## Quick Start with Docker
 

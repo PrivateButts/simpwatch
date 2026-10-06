@@ -20,6 +20,8 @@
       --shadow: rgba(0, 0, 0, 0.04);
       --bg-radial-1: #fff8ef;
       --bg-radial-2: #fbe6dc;
+      /* Tall data lists scroll inside their panel instead of stretching the page. */
+      --scroll-max: 450px;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -110,26 +112,96 @@
       font-size: 0.94rem;
     }
 
-    .filter-row select {
-      min-width: 260px;
+    .filter-hint {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    /* Searchable game filter. The native <select> stays in the DOM (and still drives
+       the form) so filtering keeps working without JS; the combobox replaces it. */
+    .game-filter {
+      position: relative;
+      flex: 1 1 260px;
       max-width: 100%;
+    }
+
+    .js .game-filter > select {
+      display: none;
+    }
+
+    .filter-row input.game-filter-input,
+    .filter-row select {
+      width: 100%;
       padding: 10px 12px;
       border-radius: 10px;
       border: 1px solid var(--border);
       background: var(--panel);
       color: var(--text);
       font-size: 0.95rem;
+      font-family: inherit;
     }
 
-    .filter-hint {
+    .filter-row input.game-filter-input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .game-filter-menu {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      margin: 0;
+      padding: 4px;
+      list-style: none;
+      max-height: 260px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px var(--shadow);
+    }
+
+    .game-filter-menu[hidden] {
+      display: none;
+    }
+
+    .game-filter-option {
+      padding: 7px 9px;
+      border-radius: 6px;
+      font-size: 0.92rem;
+      overflow-wrap: anywhere;
+      cursor: pointer;
+    }
+
+    .game-filter-option:hover {
+      background: var(--accent-soft);
+    }
+
+    .game-filter-option.is-selected {
+      font-weight: 700;
+    }
+
+    .game-filter-option.is-active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .game-filter-empty {
+      padding: 7px 9px;
       color: var(--muted);
-      font-size: 0.86rem;
+      font-size: 0.88rem;
     }
 
     .grid {
       display: grid;
       gap: 16px;
-      grid-template-columns: 1.6fr 1.2fr 1fr;
+      /* minmax(0, ...) keeps long titles from blowing out a track's min-content. */
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1fr);
     }
 
     .panel {
@@ -138,21 +210,29 @@
       border-radius: 14px;
       padding: 14px;
       box-shadow: 0 8px 24px var(--shadow);
-    }
-
-    .panel h2 {
-      margin: 0 0 12px;
-      font-size: 1.08rem;
+      min-width: 0;
     }
 
     ol {
       margin: 0;
       padding-left: 0;
-        counter-reset: row-number;
+      counter-reset: row-number;
       display: grid;
+      /* One column sized to the panel so long names ellipsize instead of stretching
+         the scroll container past its own box. */
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
-      max-height: 450px;
+    }
+
+    /* Capped + scrollable bodies. scrollbar-gutter reserves the scrollbar strip so
+       overlay scrollbars (Firefox/Wayland, macOS) never cover the trailing value. */
+    ol,
+    .event-list,
+    .channel-cards {
+      max-height: var(--scroll-max);
       overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
     }
 
     ol li {
@@ -191,6 +271,7 @@
 
     .event-list {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
     }
 
@@ -216,6 +297,10 @@
       word-break: break-word;
     }
 
+    .event .meta {
+      overflow-wrap: anywhere;
+    }
+
     .help-section {
       margin-top: 16px;
     }
@@ -223,7 +308,11 @@
     .help-grid {
       display: grid;
       gap: 20px;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .help-grid > * {
+      min-width: 0;
     }
 
     .help-grid h3 {
@@ -236,11 +325,14 @@
       display: flex;
       flex-direction: column;
       gap: 20px;
+      min-width: 0;
     }
 
     .cmd-table {
       width: 100%;
       border-collapse: collapse;
+      /* Fixed layout keeps a long command from stealing width from its description. */
+      table-layout: fixed;
       font-size: 0.88rem;
     }
 
@@ -263,6 +355,7 @@
       user-select: none;
       transition: color 0.15s ease;
       position: relative;
+      overflow-wrap: anywhere;
     }
 
     .cmd:hover,
@@ -346,6 +439,14 @@
       gap: 6px;
       font-weight: 700;
       font-size: 0.9rem;
+      min-width: 0;
+    }
+
+    .channel-name-row > span:first-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .channel-badge {
@@ -395,17 +496,17 @@
 
     @media (max-width: 1200px) {
       .grid {
-        grid-template-columns: 1.6fr 1.2fr;
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr);
       }
     }
 
     @media (max-width: 820px) {
       .grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
       }
 
       .help-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
       }
     }
   </style>
@@ -424,12 +525,20 @@
 
     <form method="get" class="filter-row" aria-label="Crimeboard game filter">
       <label for="game-filter">Game Filter</label>
-      <select id="game-filter" name="game" onchange="this.form.submit()">
-        <option value=""{% if not selected_game_id %} selected{% endif %}>All games</option>
-        {% for game in games %}
-        <option value="{{ game.game_id }}"{% if selected_game_id == game.game_id %} selected{% endif %}>{{ game.game_name }}</option>
-        {% endfor %}
-      </select>
+      <div class="game-filter">
+        <select id="game-filter" name="game" onchange="this.form.submit()">
+          <option value=""{% if not selected_game_id %} selected{% endif %}>All games</option>
+          {% for game in games %}
+          <option value="{{ game.game_id }}"{% if selected_game_id == game.game_id %} selected{% endif %}>{{ game.game_name }}</option>
+          {% endfor %}
+        </select>
+        <input id="game-filter-input" class="game-filter-input" type="text"
+               placeholder="Search games" role="combobox" aria-expanded="false"
+               aria-controls="game-filter-menu" aria-autocomplete="list"
+               autocomplete="off" hidden>
+        <ul id="game-filter-menu" class="game-filter-menu" role="listbox" hidden></ul>
+      </div>
+      <span class="filter-hint">Type to search games, Enter applies the highlighted one</span>
     </form>
 
     <section class="grid">
@@ -614,6 +723,173 @@
           handleCopy(el);
         }
       });
+    });
+  })();
+
+  // Searchable game filter. Enhances the native <select> (which stays in the DOM and
+  // keeps driving the form) into a filtering combobox.
+  (function () {
+    document.documentElement.classList.add('js');
+
+    const select = document.getElementById('game-filter');
+    const input = document.getElementById('game-filter-input');
+    const menu = document.getElementById('game-filter-menu');
+    if (!select || !input || !menu) {
+      return;
+    }
+
+    const options = Array.from(select.options).map((option) => ({
+      value: option.value,
+      label: (option.textContent || '').trim(),
+    }));
+    const form = select.form;
+
+    let matches = options;
+    let activeIndex = -1;
+
+    function selectedLabel() {
+      const found = options.find((entry) => entry.value === select.value);
+      return found ? found.label : '';
+    }
+
+    function render() {
+      menu.textContent = '';
+      input.removeAttribute('aria-activedescendant');
+
+      if (!matches.length) {
+        const empty = document.createElement('li');
+        empty.className = 'game-filter-empty';
+        empty.textContent = 'No matching games';
+        menu.appendChild(empty);
+        return;
+      }
+
+      matches.forEach((entry, index) => {
+        const item = document.createElement('li');
+        item.className = 'game-filter-option';
+        item.setAttribute('role', 'option');
+        item.dataset.value = entry.value;
+        item.textContent = entry.label;
+        if (entry.value === select.value) {
+          item.setAttribute('aria-selected', 'true');
+          item.classList.add('is-selected');
+        }
+        if (index === activeIndex) {
+          item.classList.add('is-active');
+          item.id = 'game-filter-option-active';
+          input.setAttribute('aria-activedescendant', item.id);
+        }
+        menu.appendChild(item);
+      });
+    }
+
+    function search(query) {
+      const needle = (query || '').trim().toLowerCase();
+      activeIndex = -1;
+      matches = needle
+        ? options.filter((entry) => entry.label.toLowerCase().includes(needle))
+        : options;
+      menu.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      render();
+    }
+
+    function open() {
+      input.value = selectedLabel();
+      search('');
+      // Single-select behaves like select2: typing replaces the current value.
+      input.select();
+    }
+
+    function close() {
+      menu.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      input.value = selectedLabel();
+      activeIndex = -1;
+      matches = options;
+    }
+
+    function apply(value) {
+      select.value = value;
+      close();
+      form.submit();
+    }
+
+    function move(step) {
+      if (menu.hidden) {
+        open();
+        return;
+      }
+      if (!matches.length) {
+        return;
+      }
+      activeIndex = Math.min(Math.max(activeIndex + step, 0), matches.length - 1);
+      render();
+      const active = menu.querySelector('.is-active');
+      if (active) {
+        active.scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    select.tabIndex = -1;
+    input.hidden = false;
+    input.value = selectedLabel();
+    const label = document.querySelector('label[for="game-filter"]');
+    if (label) {
+      label.htmlFor = input.id;
+    }
+
+    input.addEventListener('focus', function () {
+      if (menu.hidden) {
+        open();
+      }
+    });
+
+    input.addEventListener('click', function () {
+      if (menu.hidden) {
+        open();
+      }
+    });
+
+    input.addEventListener('input', function () {
+      search(input.value);
+    });
+
+    input.addEventListener('blur', function () {
+      close();
+    });
+
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        move(1);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        move(-1);
+      } else if (event.key === 'Enter') {
+        if (!menu.hidden && matches.length) {
+          event.preventDefault();
+          apply(matches[activeIndex < 0 ? 0 : activeIndex].value);
+        }
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      }
+    });
+
+    // mousedown (not click) so the option wins before the input's blur closes the menu.
+    menu.addEventListener('mousedown', function (event) {
+      const item = event.target.closest('.game-filter-option');
+      if (!item) {
+        return;
+      }
+      event.preventDefault();
+      apply(item.dataset.value);
+    });
+
+    select.addEventListener('change', function () {
+      input.value = selectedLabel();
     });
   })();
   </script>

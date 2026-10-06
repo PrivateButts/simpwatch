@@ -20,6 +20,8 @@
       --shadow: rgba(0, 0, 0, 0.04);
       --bg-radial-1: #fff8ef;
       --bg-radial-2: #fbe6dc;
+      /* Tall data lists scroll inside their panel instead of stretching the page. */
+      --scroll-max: 450px;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -107,7 +109,8 @@
     .grid {
       display: grid;
       gap: 16px;
-      grid-template-columns: 2fr 1.4fr;
+      /* minmax(0, ...) keeps long titles from blowing out a track's min-content. */
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr);
     }
 
     .panel {
@@ -116,6 +119,7 @@
       border-radius: 14px;
       padding: 14px;
       box-shadow: 0 8px 24px var(--shadow);
+      min-width: 0;
     }
 
     .panel h2 {
@@ -126,8 +130,17 @@
     ol {
       margin: 0;
       padding-left: 22px;
-      max-height: 450px;
+    }
+
+    /* Capped + scrollable bodies. scrollbar-gutter reserves the scrollbar strip so
+       overlay scrollbars (Firefox/Wayland, macOS) never cover the trailing value. */
+    ol,
+    .event-list,
+    .channel-cards {
+      max-height: var(--scroll-max);
       overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
     }
 
     li {
@@ -157,9 +170,8 @@
 
     .event-list {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
-      max-height: 450px;
-      overflow-y: auto;
     }
 
     .event {
@@ -186,16 +198,6 @@
       font-size: 0.8rem;
     }
 
-    @media (max-width: 820px) {
-      .grid {
-        grid-template-columns: 1fr;
-      }
-
-      .help-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
     .help-section {
       margin-top: 16px;
     }
@@ -203,7 +205,11 @@
     .help-grid {
       display: grid;
       gap: 20px;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .help-grid > * {
+      min-width: 0;
     }
 
     .help-grid h3 {
@@ -216,11 +222,13 @@
       display: flex;
       flex-direction: column;
       gap: 20px;
+      min-width: 0;
     }
 
     .cmd-table {
       width: 100%;
       border-collapse: collapse;
+      table-layout: fixed;
       font-size: 0.88rem;
     }
 
@@ -241,6 +249,7 @@
       width: 45%;
       cursor: pointer;
       user-select: none;
+      overflow-wrap: anywhere;
       transition: color 0.15s ease;
       position: relative;
     }
@@ -343,6 +352,14 @@
       gap: 6px;
       font-weight: 700;
       font-size: 0.9rem;
+      min-width: 0;
+    }
+
+    .channel-name-row > span:first-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .channel-badge {
@@ -388,6 +405,17 @@
     .muted {
       color: var(--muted);
       font-size: 0.88rem;
+    }
+
+    /* Breakpoints live last so they win over the equal-specificity base rules above. */
+    @media (max-width: 820px) {
+      .grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .help-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
   </style>
 </head>

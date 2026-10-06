@@ -747,6 +747,18 @@ def _fetch_twitch_channel_data(channels: list[str]) -> dict[str, dict]:
     return result
 
 
+def _sort_watched_channels(channels: list[dict]) -> list[dict]:
+    """Order watched channels for display: live first (busiest first), then offline."""
+    return sorted(
+        channels,
+        key=lambda ch: (
+            not ch["is_live"],
+            -ch["viewer_count"],
+            ch["display_name"].casefold(),
+        ),
+    )
+
+
 def _watched_channels_enriched() -> list[dict]:
     """Return channel list, enriched with Twitch API data when credentials are set."""
     from .twitch_channels import get_monitored_channels
@@ -757,7 +769,7 @@ def _watched_channels_enriched() -> list[dict]:
 
     cached = cache.get(_TWITCH_CHANNEL_CACHE_KEY)
     if cached is not None:
-        return cached
+        return _sort_watched_channels(cached)
 
     api_data = _fetch_twitch_channel_data(channels)
 
@@ -788,6 +800,8 @@ def _watched_channels_enriched() -> list[dict]:
     )
     for ch in result:
         ch["has_grant"] = ch["login"] in active_grant_logins
+
+    result = _sort_watched_channels(result)
 
     cache.set(_TWITCH_CHANNEL_CACHE_KEY, result, _TWITCH_CHANNEL_CACHE_TTL)
     return result

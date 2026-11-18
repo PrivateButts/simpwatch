@@ -242,13 +242,13 @@ class HappyPrideEasterEggTests(SimpleTestCase):
             is_happy_pride_easter_egg("Happy Pride LESBIANPRIDE PANSEXUALPRIDE")
         )
 
-    def test_with_random_message_returns_false(self):
-        self.assertFalse(is_happy_pride_easter_egg("Happy Pride everyone"))
+    def test_with_trailing_words(self):
+        self.assertTrue(is_happy_pride_easter_egg("Happy Pride everyone"))
 
-    def test_extra_words_prefix_returns_false(self):
-        self.assertFalse(is_happy_pride_easter_egg("Hello Happy Pride"))
+    def test_with_leading_words(self):
+        self.assertTrue(is_happy_pride_easter_egg("Hello Happy Pride"))
 
-    def test_extra_words_middle_returns_false(self):
+    def test_non_adjacent_words_return_false(self):
         self.assertFalse(is_happy_pride_easter_egg("Happy Birthday Pride"))
 
     def test_empty_string_returns_false(self):
@@ -260,8 +260,8 @@ class HappyPrideEasterEggTests(SimpleTestCase):
     def test_unrelated_command_returns_false(self):
         self.assertFalse(is_happy_pride_easter_egg("!simp"))
 
-    def test_with_unknown_emote_returns_false(self):
-        self.assertFalse(is_happy_pride_easter_egg("Happy Pride SomeRandomEmote"))
+    def test_with_unknown_emote(self):
+        self.assertTrue(is_happy_pride_easter_egg("Happy Pride SomeRandomEmote"))
 
     def test_case_mixed_with_emotes(self):
         self.assertTrue(is_happy_pride_easter_egg("happy PRIDE Kappa"))
@@ -270,6 +270,17 @@ class HappyPrideEasterEggTests(SimpleTestCase):
         self.assertIn("PansexualPride", PRIDE_EMOTE_NAMES)
         self.assertEqual(len(PRIDE_EMOTE_NAMES), 9)
 
-    def test_reply_prefix_returns_false(self):
-        """Reply @mention prefix is NOT stripped by this function (bot handles it)."""
-        self.assertFalse(is_happy_pride_easter_egg("@someone Happy Pride"))
+    def test_reply_prefix(self):
+        """The bot strips reply @mentions, but the phrase is detected anywhere."""
+        self.assertTrue(is_happy_pride_easter_egg("@someone Happy Pride"))
+
+    def test_phrase_in_middle_of_sentence(self):
+        self.assertTrue(
+            is_happy_pride_easter_egg("Hey everyone, happy pride to all of you!")
+        )
+
+    def test_trailing_punctuation(self):
+        self.assertTrue(is_happy_pride_easter_egg("Happy Pride!"))
+
+    def test_punctuation_between_phrase_and_other_words(self):
+        self.assertTrue(is_happy_pride_easter_egg("Wow! Happy Pride. Great day"))

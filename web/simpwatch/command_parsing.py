@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import string
 
 
 def parse_bot_mention_command(
@@ -227,15 +228,14 @@ def is_happy_pride_easter_egg(
     text: str,
     message_emotes: list | None = None,
 ) -> bool:
-    """Return True when *text* is ``Happy Pride`` with only emote tokens.
-    
-    *message_emotes* is an optional sequence of twitchio ``ChatEmote`` objects
-    whose ``.name`` will also be treated as recognised emote names.
-    """
-    tokens = text.strip().split()
-    if len(tokens) < 2:
-        return False
+    """Return True when the phrase ``Happy Pride`` appears anywhere in *text*.
 
+    Matching is case-insensitive and ignores surrounding punctuation. Known
+    emote tokens (common Twitch emotes, pride emotes, and the optional
+    *message_emotes*) are skipped entirely, so ``Happy Kappa Pride`` still
+    counts as the phrase. Only adjacent ``happy``/``pride`` word pairs match,
+    so ``Happy Birthday Pride`` does not.
+    """
     known_emotes = set(_K_EMOTE)
     if message_emotes:
         for emote in message_emotes:
@@ -243,5 +243,14 @@ def is_happy_pride_easter_egg(
             if name:
                 known_emotes.add(name.lower())
 
-    non_emote = [t.lower() for t in tokens if t.lower() not in known_emotes]
-    return non_emote == ["happy", "pride"]
+    words: list[str] = []
+    for token in text.split():
+        word = token.lower().strip(string.punctuation + "…")
+        if not word or word in known_emotes:
+            continue
+        words.append(word)
+
+    return any(
+        current == "happy" and following == "pride"
+        for current, following in zip(words, words[1:])
+    )

@@ -1039,12 +1039,6 @@ class TwitchSimpBot(commands.Bot):
                 )
                 return
 
-        if is_happy_pride_easter_egg(content, getattr(message, "emotes", None)):
-            emote1 = random.choice(PRIDE_EMOTE_NAMES)
-            emote2 = random.choice(PRIDE_EMOTE_NAMES)
-            await self._send_message(message, f"{emote1} HAPPY PRIDE {emote2}")
-            return
-
         bot_cmd = parse_bot_mention_command(content, self.nick or self._bot_username or "")
         if bot_cmd is not None:
             _stats["commands_seen"] += 1
@@ -1073,6 +1067,10 @@ class TwitchSimpBot(commands.Bot):
         )
         _is_deathcheck = lowered == "!deathcheck" or lowered.startswith("!deathcheck ")
         if not _is_simp and not _is_ban and not _is_bamder and not _is_criminal and not _is_backgroundcheck and not _is_death and not _is_deathcheck:
+            if is_happy_pride_easter_egg(content, getattr(message, "emotes", None)):
+                emote1 = random.choice(PRIDE_EMOTE_NAMES)
+                emote2 = random.choice(PRIDE_EMOTE_NAMES)
+                await self._send_message(message, f"{emote1} HAPPY PRIDE {emote2}")
             return
 
         _stats["commands_seen"] += 1

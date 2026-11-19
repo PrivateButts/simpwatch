@@ -219,6 +219,19 @@ class EventMessageRoutingTests(SimpleTestCase):
         self.assertIn("HAPPY PRIDE", sent_text)
         self.assertEqual(_stats["commands_seen"], 0)
 
+    async def test_happy_pride_easter_egg_fires_anywhere_in_message(self):
+        """The phrase triggers the reply even with surrounding chat text."""
+        bot = _make_bot(reply_channels={"streamerchan"})
+        msg = _message(
+            "hey everyone happy pride to you all", channel="streamerchan"
+        )
+
+        await bot.event_message(msg)
+
+        msg.channel.send.assert_awaited_once()
+        self.assertIn("HAPPY PRIDE", msg.channel.send.call_args[0][0])
+        self.assertEqual(_stats["commands_seen"], 0)
+
 
 class ProcessMessageSimpTests(SimpleTestCase):
     """Tests for the !simp path inside _process_message."""
@@ -246,6 +259,26 @@ class ProcessMessageSimpTests(SimpleTestCase):
         self.assertEqual(_stats["commands_seen"], 1)
         self.assertEqual(_stats["events_registered"], 1)
         self.assertEqual(_stats["cooldowns"], 0)
+
+    async def test_command_containing_happy_pride_runs_command_not_easter_egg(self):
+        """A command wins over the Easter egg even when it contains the phrase."""
+        bot = _make_bot()
+        msg = _message("!simp Happy Pride", channel="streamerchan")
+        fake_target = SimpleNamespace(name="streamerchan")
+        fake_event = SimpleNamespace(id=42, points=1)
+
+        with (
+            patch(
+                "services.twitch_bot.main.get_or_create_twitch_target",
+                return_value=fake_target,
+            ),
+            patch("services.twitch_bot.main.register_simp", return_value=fake_event),
+        ):
+            await bot._process_message(msg, msg.content)
+
+        self.assertEqual(_stats["commands_seen"], 1)
+        self.assertEqual(_stats["events_registered"], 1)
+        msg.channel.send.assert_not_awaited()
 
     async def test_simp_at_mention_sends_redirect_hint(self):
         """!simp @username (not a bot-mention) should redirect the user, not register an event."""
